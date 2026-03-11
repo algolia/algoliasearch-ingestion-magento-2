@@ -1,0 +1,17 @@
+{
+  "name": "algolia/algoliasearch-ingestion-magento-2",
+  "description": "Algolia Ingestion API support for Magento 2",
+  "type": "magento2-module",
+  "license": ["MIT"],
+  "version": "0.1.0",
+  "require": {
+    "php": "~8.2|~8.3|~8.4",
+    "algolia/algoliasearch-magento-2": "^3.19.0"
+  },
+  "autoload": {
+    "files": ["registration.php"],
+    "psr-4": {
+      "Algolia\\Ingestion\\": ""
+    }
+  }
+}
