@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<schema xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Setup/Declaration/Schema/etc/schema.xsd">
+    <table name="algoliasearch_ingestion_task" resource="default" engine="innodb" comment="Algolia Ingestion Task Table">
+        <column xsi:type="int" name="id" unsigned="true" nullable="false" identity="true" comment="Primary Key"/>
+        <column xsi:type="int" name="store_id" unsigned="true" nullable="false" identity="false" comment="Magento Store View ID"/>
+        <column xsi:type="varchar" name="index_name" nullable="false" length="255" comment="Full Algolia Index Name"/>
+        <column xsi:type="varchar" name="task_id" nullable="false" length="255" comment="Ingestion API Task UUID"/>
+        <column xsi:type="varchar" name="source_id" nullable="false" length="255" comment="Ingestion API Source UUID"/>
+        <column xsi:type="varchar" name="destination_id" nullable="false" length="255" comment="Ingestion API Destination UUID"/>
+        <column xsi:type="varchar" name="authentication_id" nullable="true" length="255" comment="Ingestion API Authentication UUID"/>
+        <column xsi:type="datetime" name="created_at" on_update="false" nullable="false" default="CURRENT_TIMESTAMP" comment="Created At"/>
+        <column xsi:type="datetime" name="updated_at" on_update="true" nullable="false" default="CURRENT_TIMESTAMP" comment="Updated At"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="id"/>
+        </constraint>
+        <constraint xsi:type="unique" referenceId="ALGOLIASEARCH_INGESTION_TASK_STORE_ID_INDEX_NAME">
+            <column name="store_id"/>
+            <column name="index_name"/>
+        </constraint>
+        <index referenceId="ALGOLIASEARCH_INGESTION_TASK_STORE_ID" indexType="btree">
+            <column name="store_id"/>
+        </index>
+    </table>
+</schema>

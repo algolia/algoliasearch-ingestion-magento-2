@@ -1,8 +1,4 @@
 <?php
-/**
- * Copyright © Algolia, Inc. All rights reserved.
- * See COPYING.txt for license details.
- */
 
 use Magento\Framework\Component\ComponentRegistrar;
 
