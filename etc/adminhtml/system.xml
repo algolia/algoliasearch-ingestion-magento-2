@@ -1,13 +1,9 @@
 <?xml version="1.0"?>
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Config:etc/system_file.xsd">
     <system>
-        <section id="algoliasearch_ingestion" translate="label" type="text" sortOrder="66" showInDefault="1" showInWebsite="1"
-                 showInStore="1">
-            <label>Algolia Ingestion</label>
-            <tab>algolia</tab>
-            <resource>Algolia_AlgoliaSearch::algolia_algoliasearch</resource>
-            <group id="general" translate="label" type="text" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
-                <label>General</label>
+        <section id="algoliasearch_indexing_manager">
+            <group id="ingestion" translate="label" type="text" sortOrder="5" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Algolia Ingestion</label>
                 <attribute type="expanded">1</attribute>
                 <field id="enable" translate="label comment" type="select" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
                     <label>Enable Algolia Ingestion</label>

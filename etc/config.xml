@@ -1,12 +1,12 @@
 <?xml version="1.0"?>
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
     <default>
-        <algoliasearch_ingestion>
-            <general>
+        <algoliasearch_indexing_manager>
+            <ingestion>
                 <enable>0</enable>
                 <region>us</region>
                 <fallback_to_batch>1</fallback_to_batch>
-            </general>
-        </algoliasearch_ingestion>
+            </ingestion>
+        </algoliasearch_indexing_manager>
     </default>
 </config>

@@ -8,9 +8,9 @@ use Magento\Tests\NamingConvention\true\string;
 
 class IngestionConfigHelper
 {
-    public const INGESTION_ENABLED = 'algoliasearch_ingestion/general/enable';
-    public const INGESTION_REGION = 'algoliasearch_ingestion/general/region';
-    public const INGESTION_FALLBACK_ENABLED = 'algoliasearch_ingestion/general/fallback_to_batch';
+    public const INGESTION_ENABLED = 'algoliasearch_indexing_manager/ingestion/enable';
+    public const INGESTION_REGION = 'algoliasearch_indexing_manager/ingestion/region';
+    public const INGESTION_FALLBACK_ENABLED = 'algoliasearch_indexing_manager/ingestion/fallback_to_batch';
 
     public function __construct(
         protected ScopeConfigInterface $configInterface,
