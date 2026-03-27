@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Config:etc/system_file.xsd">
+    <system>
+        <section id="algoliasearch_indexing_manager">
+            <group id="ingestion" translate="label" type="text" sortOrder="5" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Algolia Ingestion</label>
+                <attribute type="expanded">1</attribute>
+                <field id="enable" translate="label comment" type="select" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Algolia Ingestion</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>
+                        <![CDATA[
+                            Do you want to enable the Algolia Ingestion Platform?<br>
+                            By default, all the indexing operations are directly sent to the Algolia indices.<br/>
+                            If you enable this feature, these operation will go through the Algolia Ingestion Plaform, which will allow you to use transformation in your Algolia dashboard.
+                        ]]>
+                    </comment>
+                </field>
+                <field id="region" translate="label comment" type="select" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Region</label>
+                    <source_model>Algolia\Ingestion\Model\Source\Regions</source_model>
+                    <comment>
+                        <![CDATA[
+                           Specify the Ingestion Platform region you want to use: America (US) or Europe (EU).
+                        ]]>
+                    </comment>
+                </field>
+                <field id="fallback_to_batch" translate="label comment" type="select" sortOrder="30" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Fallback to direct indexing on error</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>
+                        <![CDATA[
+                            By enabling this configuration, the process will automatically fallback to direct indexing if any error happens.
+                        ]]>
+                    </comment>
+                </field>
+            </group>
+        </section>
+    </system>
+</config>
