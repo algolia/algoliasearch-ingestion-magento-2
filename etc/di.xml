@@ -3,4 +3,8 @@
     <!-- Client provider -->
     <preference for="Algolia\Ingestion\Api\IngestionClientProviderInterface"
                 type="Algolia\Ingestion\Service\IngestionClientProvider"/>
+
+    <!-- Task service -->
+    <preference for="Algolia\Ingestion\Api\IngestionTaskServiceInterface"
+                type="Algolia\Ingestion\Service\IngestionTaskService"/>
 </config>
