@@ -396,13 +396,4 @@ class IngestionTaskServiceTest extends TestCase
 
         return $response;
     }
-
-    /**
-     * @throws \ReflectionException
-     */
-    private function getPrivateProperty(object $object, string $property): mixed
-    {
-        $reflection = new \ReflectionClass($object);
-        return $reflection->getProperty($property)->getValue($object);
-    }
 }
