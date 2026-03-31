@@ -6,7 +6,6 @@ use Algolia\AlgoliaSearch\Api\IngestionClient;
 use Algolia\AlgoliaSearch\Configuration\IngestionConfig;
 use Algolia\AlgoliaSearch\Exceptions\AlgoliaException;
 use Algolia\AlgoliaSearch\Helper\ConfigHelper;
-use Algolia\AlgoliaSearch\Service\AlgoliaConnector;
 use Algolia\AlgoliaSearch\Service\AlgoliaCredentialsManager;
 use Algolia\Ingestion\Api\IngestionClientProviderInterface;
 use Algolia\Ingestion\Helper\IngestionConfigHelper;
@@ -25,10 +24,10 @@ class IngestionClientProvider implements IngestionClientProviderInterface
     /**
      * @throws AlgoliaException
      */
-    public function getClient(?int $storeId = AlgoliaConnector::ALGOLIA_DEFAULT_SCOPE): IngestionClient
+    public function getClient(?int $storeId = self::ALGOLIA_DEFAULT_SCOPE): IngestionClient
     {
         if ($storeId === null) {
-            $storeId = AlgoliaConnector::ALGOLIA_DEFAULT_SCOPE;
+            $storeId = self::ALGOLIA_DEFAULT_SCOPE;
         }
 
         if (!isset($this->clients[$storeId])) {
@@ -41,7 +40,7 @@ class IngestionClientProvider implements IngestionClientProviderInterface
     /**
      * @throws AlgoliaException
      */
-    protected function createClient(int $storeId = AlgoliaConnector::ALGOLIA_DEFAULT_SCOPE): void
+    protected function createClient(int $storeId = self::ALGOLIA_DEFAULT_SCOPE): void
     {
         if (!$this->algoliaCredentialsManager->checkCredentials($storeId)) {
             throw new AlgoliaException('Client initialization could not be performed because Algolia credentials were not provided.');

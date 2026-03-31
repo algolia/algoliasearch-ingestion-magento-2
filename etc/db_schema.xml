@@ -5,8 +5,8 @@
         <column xsi:type="int" name="store_id" unsigned="true" nullable="false" identity="false" comment="Magento Store View ID"/>
         <column xsi:type="varchar" name="index_name" nullable="false" length="255" comment="Full Algolia Index Name"/>
         <column xsi:type="varchar" name="task_id" nullable="false" length="255" comment="Ingestion API Task UUID"/>
-        <column xsi:type="varchar" name="source_id" nullable="false" length="255" comment="Ingestion API Source UUID"/>
-        <column xsi:type="varchar" name="destination_id" nullable="false" length="255" comment="Ingestion API Destination UUID"/>
+        <column xsi:type="varchar" name="source_id" nullable="true" length="255" comment="Ingestion API Source UUID"/>
+        <column xsi:type="varchar" name="destination_id" nullable="true" length="255" comment="Ingestion API Destination UUID"/>
         <column xsi:type="varchar" name="authentication_id" nullable="true" length="255" comment="Ingestion API Authentication UUID"/>
         <column xsi:type="datetime" name="created_at" on_update="false" nullable="false" default="CURRENT_TIMESTAMP" comment="Created At"/>
         <column xsi:type="datetime" name="updated_at" on_update="true" nullable="false" default="CURRENT_TIMESTAMP" comment="Updated At"/>

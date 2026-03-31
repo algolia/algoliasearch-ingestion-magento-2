@@ -1,0 +1,22 @@
+{
+    "algoliasearch_ingestion_task": {
+        "column": {
+            "id": true,
+            "store_id": true,
+            "index_name": true,
+            "task_id": true,
+            "source_id": true,
+            "destination_id": true,
+            "authentication_id": true,
+            "created_at": true,
+            "updated_at": true
+        },
+        "constraint": {
+            "PRIMARY": true,
+            "ALGOLIASEARCH_INGESTION_TASK_STORE_ID_INDEX_NAME": true
+        },
+        "index": {
+            "ALGOLIASEARCH_INGESTION_TASK_STORE_ID": true
+        }
+    }
+}
