@@ -4,7 +4,6 @@ namespace Algolia\Ingestion\Helper;
 
 use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Store\Model\ScopeInterface;
-use Magento\Tests\NamingConvention\true\string;
 
 class IngestionConfigHelper
 {
