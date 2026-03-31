@@ -93,10 +93,32 @@ class IngestionClientProviderTest extends TestCase
         $this->assertEquals([1, 2], $storeIds);
     }
 
-    public function testGetClientRWithWrongRegion(): void
+    public function testGetClientWithWrongRegion(): void
     {
         $ingestionConfigHelper = $this->createMock(IngestionConfigHelper::class);
         $ingestionConfigHelper->method('getRegion')->willReturn('jp');
+
+        $this->credentialsManager->expects($this->once())
+            ->method('checkCredentials')
+            ->with(1)
+            ->willReturn(true);
+
+        $provider = new IngestionClientProvider(
+            $this->config,
+            $ingestionConfigHelper,
+            $this->credentialsManager
+        );
+
+        $this->expectException(AlgoliaException::class);
+        $this->expectExceptionMessage('region` is required and must be one of the following: eu, us');
+
+        $provider->getClient(1);
+    }
+
+    public function testGetClientWithEmptyRegion(): void
+    {
+        $ingestionConfigHelper = $this->createMock(IngestionConfigHelper::class);
+        $ingestionConfigHelper->method('getRegion')->willReturn('');
 
         $this->credentialsManager->expects($this->once())
             ->method('checkCredentials')
