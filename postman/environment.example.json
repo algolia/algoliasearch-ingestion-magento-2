@@ -1,0 +1,63 @@
+{
+  "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+  "name": "Algolia Ingestion API - Example",
+  "_postman_variable_scope": "environment",
+  "values": [
+    {
+      "key": "algoliaAppId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Your Algolia Application ID. Found in the Algolia dashboard under API Keys."
+    },
+    {
+      "key": "algoliaApiKey",
+      "value": "",
+      "type": "secret",
+      "enabled": true,
+      "description": "Admin API key with Ingestion read permissions. Found in the Algolia dashboard under API Keys."
+    },
+    {
+      "key": "baseUrl",
+      "value": "https://data.us.algolia.com",
+      "type": "default",
+      "enabled": true,
+      "description": "Ingestion API base URL. Set to us (https://data.us.algolia.com) or eu (https://data.eu.algolia.com) to match your Algolia application region."
+    },
+    {
+      "key": "authenticationID",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID of a specific authentication resource. Use List Authentications to find available IDs."
+    },
+    {
+      "key": "destinationID",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID of a specific destination resource. Use List Destinations to find available IDs."
+    },
+    {
+      "key": "sourceID",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID of a specific source resource. Use List Sources to find available IDs."
+    },
+    {
+      "key": "taskID",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID of a specific task resource. Use List Tasks to find available IDs."
+    },
+    {
+      "key": "transformationID",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID of a specific transformation resource. Use List Transformations to find available IDs."
+    }
+  ]
+}

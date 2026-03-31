@@ -1,0 +1,264 @@
+{
+  "info": {
+    "name": "Algolia Ingestion API",
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "description": "Read-only endpoints for the Algolia Ingestion (Connectors) API. Covers authentications, destinations, sources, tasks, and transformations.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.request.headers.add({ key: 'X-Algolia-Application-Id', value: pm.environment.get('algoliaAppId') });",
+          "pm.request.headers.add({ key: 'X-Algolia-API-Key', value: pm.environment.get('algoliaApiKey') });"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://data.us.algolia.com",
+      "description": "Override via the active Postman environment. Change region as needed (us, eu, de, au)."
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentications",
+      "item": [
+        {
+          "name": "List Authentications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/1/authentications",
+              "host": ["{{baseUrl}}"],
+              "path": ["1", "authentications"],
+              "query": [
+                { "key": "itemsPerPage", "value": "20", "disabled": true, "description": "Number of items per page." },
+                { "key": "page", "value": "1", "disabled": true, "description": "Page number (1-based)." },
+                { "key": "type", "value": "basic", "disabled": true, "description": "Filter by authentication type. Repeat this key for multiple values." },
+                { "key": "platform", "value": "bigcommerce", "disabled": true, "description": "Filter by platform. Repeat this key for multiple values." },
+                { "key": "sort", "value": "createdAt", "disabled": true, "description": "Field to sort by." },
+                { "key": "order", "value": "desc", "disabled": true, "description": "Sort direction: asc or desc." }
+              ]
+            },
+            "description": "Retrieve a paginated list of authentications. Enable query params as needed."
+          }
+        },
+        {
+          "name": "Get Authentication",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/1/authentications/:authenticationID",
+              "host": ["{{baseUrl}}"],
+              "path": ["1", "authentications", ":authenticationID"],
+              "variable": [
+                {
+                  "key": "authenticationID",
+                  "value": "{{authenticationID}}",
+                  "description": "Set authenticationID in your Postman environment."
+                }
+              ]
+            },
+            "description": "Retrieve a single authentication by ID. Set `authenticationID` in the active environment."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Destinations",
+      "item": [
+        {
+          "name": "List Destinations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/1/destinations",
+              "host": ["{{baseUrl}}"],
+              "path": ["1", "destinations"],
+              "query": [
+                { "key": "itemsPerPage", "value": "20", "disabled": true, "description": "Number of items per page." },
+                { "key": "page", "value": "1", "disabled": true, "description": "Page number (1-based)." },
+                { "key": "type", "value": "search", "disabled": true, "description": "Filter by destination type. Repeat this key for multiple values." },
+                { "key": "authenticationID", "value": "", "disabled": true, "description": "Filter by authentication ID. Repeat this key for multiple values." },
+                { "key": "transformationID", "value": "", "disabled": true, "description": "Filter by transformation ID. Repeat this key for multiple values." },
+                { "key": "sort", "value": "createdAt", "disabled": true, "description": "Field to sort by." },
+                { "key": "order", "value": "desc", "disabled": true, "description": "Sort direction: asc or desc." }
+              ]
+            },
+            "description": "Retrieve a paginated list of destinations. Enable query params as needed."
+          }
+        },
+        {
+          "name": "Get Destination",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/1/destinations/:destinationID",
+              "host": ["{{baseUrl}}"],
+              "path": ["1", "destinations", ":destinationID"],
+              "variable": [
+                {
+                  "key": "destinationID",
+                  "value": "{{destinationID}}",
+                  "description": "Set destinationID in your Postman environment."
+                }
+              ]
+            },
+            "description": "Retrieve a single destination by ID. Set `destinationID` in the active environment."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sources",
+      "item": [
+        {
+          "name": "List Sources",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/1/sources",
+              "host": ["{{baseUrl}}"],
+              "path": ["1", "sources"],
+              "query": [
+                { "key": "itemsPerPage", "value": "20", "disabled": true, "description": "Number of items per page." },
+                { "key": "page", "value": "1", "disabled": true, "description": "Page number (1-based)." },
+                { "key": "type", "value": "commercetools", "disabled": true, "description": "Filter by source type. Repeat this key for multiple values." },
+                { "key": "authenticationID", "value": "", "disabled": true, "description": "Filter by authentication ID. Repeat this key for multiple values." },
+                { "key": "sort", "value": "createdAt", "disabled": true, "description": "Field to sort by." },
+                { "key": "order", "value": "desc", "disabled": true, "description": "Sort direction: asc or desc." }
+              ]
+            },
+            "description": "Retrieve a paginated list of sources. Enable query params as needed."
+          }
+        },
+        {
+          "name": "Get Source",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/1/sources/:sourceID",
+              "host": ["{{baseUrl}}"],
+              "path": ["1", "sources", ":sourceID"],
+              "variable": [
+                {
+                  "key": "sourceID",
+                  "value": "{{sourceID}}",
+                  "description": "Set sourceID in your Postman environment."
+                }
+              ]
+            },
+            "description": "Retrieve a single source by ID. Set `sourceID` in the active environment."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tasks",
+      "item": [
+        {
+          "name": "List Tasks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/2/tasks",
+              "host": ["{{baseUrl}}"],
+              "path": ["2", "tasks"],
+              "query": [
+                { "key": "itemsPerPage", "value": "20", "disabled": true, "description": "Number of items per page." },
+                { "key": "page", "value": "1", "disabled": true, "description": "Page number (1-based)." },
+                { "key": "action", "value": "replace", "disabled": true, "description": "Filter by action type. Repeat this key for multiple values." },
+                { "key": "enabled", "value": "true", "disabled": true, "description": "Filter by enabled status." },
+                { "key": "sourceID", "value": "", "disabled": true, "description": "Filter by source ID. Repeat this key for multiple values." },
+                { "key": "sourceType", "value": "commercetools", "disabled": true, "description": "Filter by source type. Repeat this key for multiple values." },
+                { "key": "destinationID", "value": "", "disabled": true, "description": "Filter by destination ID. Repeat this key for multiple values." },
+                { "key": "triggerType", "value": "onDemand", "disabled": true, "description": "Filter by trigger type. Repeat this key for multiple values." },
+                { "key": "withEmailNotifications", "value": "false", "disabled": true, "description": "Filter tasks that have email notifications configured." },
+                { "key": "sort", "value": "createdAt", "disabled": true, "description": "Field to sort by." },
+                { "key": "order", "value": "desc", "disabled": true, "description": "Sort direction: asc or desc." }
+              ]
+            },
+            "description": "Retrieve a paginated list of tasks. Note: tasks use API version /2/. Enable query params as needed."
+          }
+        },
+        {
+          "name": "Get Task",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/2/tasks/:taskID",
+              "host": ["{{baseUrl}}"],
+              "path": ["2", "tasks", ":taskID"],
+              "variable": [
+                {
+                  "key": "taskID",
+                  "value": "{{taskID}}",
+                  "description": "Set taskID in your Postman environment."
+                }
+              ]
+            },
+            "description": "Retrieve a single task by ID. Note: tasks use API version /2/. Set `taskID` in the active environment."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Transformations",
+      "item": [
+        {
+          "name": "List Transformations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/1/transformations",
+              "host": ["{{baseUrl}}"],
+              "path": ["1", "transformations"],
+              "query": [
+                { "key": "itemsPerPage", "value": "20", "disabled": true, "description": "Number of items per page." },
+                { "key": "page", "value": "1", "disabled": true, "description": "Page number (1-based)." },
+                { "key": "type", "value": "code", "disabled": true, "description": "Filter by transformation type. Repeat this key for multiple values." },
+                { "key": "sort", "value": "createdAt", "disabled": true, "description": "Field to sort by." },
+                { "key": "order", "value": "desc", "disabled": true, "description": "Sort direction: asc or desc." }
+              ]
+            },
+            "description": "Retrieve a paginated list of transformations. Enable query params as needed."
+          }
+        },
+        {
+          "name": "Get Transformation",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/1/transformations/:transformationID",
+              "host": ["{{baseUrl}}"],
+              "path": ["1", "transformations", ":transformationID"],
+              "variable": [
+                {
+                  "key": "transformationID",
+                  "value": "{{transformationID}}",
+                  "description": "Set transformationID in your Postman environment."
+                }
+              ]
+            },
+            "description": "Retrieve a single transformation by ID. Set `transformationID` in the active environment."
+          }
+        }
+      ]
+    }
+  ]
+}
