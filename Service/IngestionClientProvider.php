@@ -6,11 +6,12 @@ use Algolia\AlgoliaSearch\Api\IngestionClient;
 use Algolia\AlgoliaSearch\Configuration\IngestionConfig;
 use Algolia\AlgoliaSearch\Exceptions\AlgoliaException;
 use Algolia\AlgoliaSearch\Helper\ConfigHelper;
+use Algolia\AlgoliaSearch\Service\AbstractClientProvider;
 use Algolia\AlgoliaSearch\Service\AlgoliaCredentialsManager;
 use Algolia\Ingestion\Api\IngestionClientProviderInterface;
 use Algolia\Ingestion\Helper\IngestionConfigHelper;
 
-class IngestionClientProvider implements IngestionClientProviderInterface
+class IngestionClientProvider extends AbstractClientProvider implements IngestionClientProviderInterface
 {
     /** @var IngestionClient[] */
     protected array $clients = [];
@@ -26,15 +27,9 @@ class IngestionClientProvider implements IngestionClientProviderInterface
      */
     public function getClient(?int $storeId = self::ALGOLIA_DEFAULT_SCOPE): IngestionClient
     {
-        if ($storeId === null) {
-            $storeId = self::ALGOLIA_DEFAULT_SCOPE;
-        }
+        $this->createClientByStore($storeId);
 
-        if (!isset($this->clients[$storeId])) {
-            $this->createClient($storeId);
-        }
-
-        return $this->clients[$storeId];
+        return $this->clients[$storeId ?: self::ALGOLIA_DEFAULT_SCOPE];
     }
 
     /**
