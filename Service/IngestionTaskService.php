@@ -14,17 +14,17 @@ use Algolia\Ingestion\Model\ResourceModel\IngestionTask\CollectionFactory;
 
 class IngestionTaskService implements IngestionTaskServiceInterface
 {
-    private const DESTINATIONS_PAGE_SIZE = 100;
+    protected const DESTINATIONS_PAGE_SIZE = 100;
 
     /** @var array<int, array<string, string>> */
-    private array $cache = [];
+    protected array $cache = [];
 
     public function __construct(
-        private readonly IngestionClientProviderInterface $clientProvider,
-        private readonly IngestionConfigHelper $configHelper,
-        private readonly IngestionTaskFactory $taskFactory,
-        private readonly IngestionTaskResource $taskResource,
-        private readonly CollectionFactory $collectionFactory
+        protected IngestionClientProviderInterface $clientProvider,
+        protected IngestionConfigHelper $configHelper,
+        protected IngestionTaskFactory $taskFactory,
+        protected IngestionTaskResource $taskResource,
+        protected CollectionFactory $collectionFactory
     ) {}
 
     public function getTaskId(int $storeId, string $indexName): string
@@ -74,17 +74,17 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         }
     }
 
-    private function loadFromCache(int $storeId, string $indexName): ?string
+    protected function loadFromCache(int $storeId, string $indexName): ?string
     {
         return $this->cache[$storeId][$indexName] ?? null;
     }
 
-    private function storeInCache(int $storeId, string $indexName, string $taskId): void
+    protected function storeInCache(int $storeId, string $indexName, string $taskId): void
     {
         $this->cache[$storeId][$indexName] = $taskId;
     }
 
-    private function loadFromDatabase(int $storeId, string $indexName): ?IngestionTask
+    protected function loadFromDatabase(int $storeId, string $indexName): ?IngestionTask
     {
         $collection = $this->collectionFactory->create();
         $collection->addFieldToFilter('store_id', $storeId);
@@ -98,7 +98,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
      * Verify the task still exists in the Ingestion API.
      * Returns false on NotFoundException so the caller can recover.
      */
-    private function verifyTaskExists(IngestionClient $client, string $taskId): bool
+    protected function verifyTaskExists(IngestionClient $client, string $taskId): bool
     {
         try {
             $client->getTask($taskId);
@@ -117,7 +117,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
      * are created against the existing destination (reusing any merchant
      * transformations attached to it).
      */
-    private function discoverExistingTask(IngestionClient $client, int $storeId, string $indexName): ?string
+    protected function discoverExistingTask(IngestionClient $client, int $storeId, string $indexName): ?string
     {
         $page = 1;
 
@@ -160,7 +160,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
      * Create a full push pipeline (source + destination + task) for the
      * given store and index. Returns the new task UUID.
      */
-    private function createFullPipeline(IngestionClient $client, int $storeId, string $indexName): string
+    protected function createFullPipeline(IngestionClient $client, int $storeId, string $indexName): string
     {
         $sourceId = $this->doCreateSource($client, $storeId);
 
@@ -177,7 +177,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         return $taskId;
     }
 
-    private function doCreateSource(IngestionClient $client, int $storeId): string
+    protected function doCreateSource(IngestionClient $client, int $storeId): string
     {
         $response = $client->createSource([
             'type' => 'push',
@@ -186,7 +186,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         return $response->getSourceID();
     }
 
-    private function doCreateTask(IngestionClient $client, string $sourceId, string $destId): string
+    protected function doCreateTask(IngestionClient $client, string $sourceId, string $destId): string
     {
         // For Push sources the task-level action field is required by the API schema but is a
         // no-op at runtime. The actual operation type (addObject, deleteObject, etc.) is declared
@@ -200,7 +200,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         return $response->getTaskID();
     }
 
-    private function persistTask(
+    protected function persistTask(
         int $storeId,
         string $indexName,
         string $taskId,
