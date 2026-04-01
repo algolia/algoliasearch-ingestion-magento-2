@@ -188,10 +188,14 @@ class IngestionTaskService implements IngestionTaskServiceInterface
 
     private function doCreateTask(IngestionClient $client, string $sourceId, string $destId): string
     {
+        // For Push sources the task-level action field is required by the API schema but is a
+        // no-op at runtime. The actual operation type (addObject, deleteObject, etc.) is declared
+        // per-request in the push payload body, so a single task supports mixed operations.
+        // 'save' is used here as the semantically neutral placeholder.
         $response = $client->createTask([
             'sourceID' => $sourceId,
             'destinationID' => $destId,
-            'action' => 'replace',
+            'action' => 'save',
         ]);
         return $response->getTaskID();
     }

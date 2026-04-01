@@ -54,9 +54,12 @@ class IngestionTaskServiceTest extends TestCase
 
         $this->collection = $this->createMock(Collection::class);
         $this->collection->method('addFieldToFilter')->willReturnSelf();
+        $this->collection->method('getIterator')->willReturn(new \ArrayIterator([]));
 
         $this->collectionFactory = $this->createMock(CollectionFactory::class);
         $this->collectionFactory->method('create')->willReturn($this->collection);
+
+        $this->taskFactory->method('create')->willReturn($this->createMock(IngestionTask::class));
 
         $this->service = new IngestionTaskService(
             $this->clientProvider,
@@ -261,6 +264,7 @@ class IngestionTaskServiceTest extends TestCase
 
     public function testInvalidateRemovesSingleCacheEntry(): void
     {
+        $this->setupEmptyCollection();
         $this->setPrivateProperty($this->service, 'cache', [
             self::STORE_ID => [
                 self::INDEX_NAME => self::TASK_ID,
