@@ -3,6 +3,7 @@
 namespace Algolia\Ingestion\Service;
 
 use Algolia\AlgoliaSearch\Api\IngestionClient;
+use Algolia\AlgoliaSearch\Exceptions\AlgoliaException;
 use Algolia\AlgoliaSearch\Exceptions\NotFoundException;
 use Algolia\Ingestion\Api\IngestionClientProviderInterface;
 use Algolia\Ingestion\Api\IngestionTaskServiceInterface;
@@ -11,6 +12,7 @@ use Algolia\Ingestion\Model\IngestionTask;
 use Algolia\Ingestion\Model\IngestionTaskFactory;
 use Algolia\Ingestion\Model\ResourceModel\IngestionTask as IngestionTaskResource;
 use Algolia\Ingestion\Model\ResourceModel\IngestionTask\CollectionFactory;
+use Magento\Framework\Exception\AlreadyExistsException;
 
 class IngestionTaskService implements IngestionTaskServiceInterface
 {
@@ -27,6 +29,11 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         protected CollectionFactory $collectionFactory
     ) {}
 
+    /**
+     * @throws AlreadyExistsException
+     * @throws AlgoliaException
+     * @throws \Exception
+     */
     public function getTaskId(int $storeId, string $indexName): string
     {
         $cached = $this->loadFromCache($storeId, $indexName);
@@ -53,6 +60,9 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         return $taskId;
     }
 
+    /**
+     * @throws \Exception
+     */
     public function invalidate(int $storeId, string $indexName): void
     {
         unset($this->cache[$storeId][$indexName]);
@@ -63,6 +73,9 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         }
     }
 
+    /**
+     * @throws \Exception
+     */
     public function invalidateByStoreId(int $storeId): void
     {
         $this->cache[$storeId] = [];
@@ -104,6 +117,9 @@ class IngestionTaskService implements IngestionTaskServiceInterface
             $client->getTask($taskId);
             return true;
         } catch (NotFoundException $e) {
+            // NotFoundException (HTTP 404) is thrown by ApiWrapper when the Algolia API returns a 404 response.
+            // This means the task no longer exists in the Ingestion API, so the caller should discard the
+            // stale reference and discover or create a new one.
             return false;
         }
     }
@@ -116,6 +132,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
      * When a destination exists but has no push task, a source and task
      * are created against the existing destination (reusing any merchant
      * transformations attached to it).
+     * @throws AlreadyExistsException
      */
     protected function discoverExistingTask(IngestionClient $client, int $storeId, string $indexName): ?string
     {
@@ -144,8 +161,8 @@ class IngestionTaskService implements IngestionTaskServiceInterface
                 }
 
                 // Destination exists but has no push task - create source + task only
-                $sourceId = $this->doCreateSource($client, $storeId);
-                $taskId = $this->doCreateTask($client, $sourceId, $destId);
+                $sourceId = $this->createSource($client, $storeId);
+                $taskId = $this->createTask($client, $sourceId, $destId);
                 $this->persistTask($storeId, $indexName, $taskId, $sourceId, $destId);
                 return $taskId;
             }
@@ -159,10 +176,11 @@ class IngestionTaskService implements IngestionTaskServiceInterface
     /**
      * Create a full push pipeline (source + destination + task) for the
      * given store and index. Returns the new task UUID.
+     * @throws AlreadyExistsException
      */
     protected function createFullPipeline(IngestionClient $client, int $storeId, string $indexName): string
     {
-        $sourceId = $this->doCreateSource($client, $storeId);
+        $sourceId = $this->createSource($client, $storeId);
 
         $destResponse = $client->createDestination([
             'type' => 'search',
@@ -172,12 +190,12 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         ]);
         $destId = $destResponse->getDestinationID();
 
-        $taskId = $this->doCreateTask($client, $sourceId, $destId);
+        $taskId = $this->createTask($client, $sourceId, $destId);
         $this->persistTask($storeId, $indexName, $taskId, $sourceId, $destId);
         return $taskId;
     }
 
-    protected function doCreateSource(IngestionClient $client, int $storeId): string
+    protected function createSource(IngestionClient $client, int $storeId): string
     {
         $response = $client->createSource([
             'type' => 'push',
@@ -186,7 +204,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         return $response->getSourceID();
     }
 
-    protected function doCreateTask(IngestionClient $client, string $sourceId, string $destId): string
+    protected function createTask(IngestionClient $client, string $sourceId, string $destId): string
     {
         // For Push sources the task-level action field is required by the API schema but is a
         // no-op at runtime. The actual operation type (addObject, deleteObject, etc.) is declared
@@ -200,6 +218,9 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         return $response->getTaskID();
     }
 
+    /**
+     * @throws AlreadyExistsException
+     */
     protected function persistTask(
         int $storeId,
         string $indexName,
