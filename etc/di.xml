@@ -7,4 +7,13 @@
     <!-- Task service -->
     <preference for="Algolia\Ingestion\Api\IngestionTaskServiceInterface"
                 type="Algolia\Ingestion\Service\IngestionTaskService"/>
+
+    <!-- Register IngestionSendStrategy into core SendStrategyResolver -->
+    <type name="Algolia\AlgoliaSearch\Service\SendStrategyResolver">
+        <arguments>
+            <argument name="strategies" xsi:type="array">
+                <item name="ingestion" xsi:type="object">Algolia\Ingestion\Service\IngestionSendStrategy</item>
+            </argument>
+        </arguments>
+    </type>
 </config>
