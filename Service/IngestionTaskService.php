@@ -140,7 +140,12 @@ class IngestionTaskService implements IngestionTaskServiceInterface
 
         do {
             $response = $client->listDestinations(self::DESTINATIONS_PAGE_SIZE, $page, ['search']);
-            $nbPages = $response->getPagination()->getNbPages();
+
+            if (is_array($response)) {
+                break;
+            }
+
+            $nbPages = $response->getPagination()->getNbPages() ?? 1;
 
             foreach ($response->getDestinations() as $destination) {
                 if ($destination->getOwner() !== null) {
@@ -197,11 +202,42 @@ class IngestionTaskService implements IngestionTaskServiceInterface
 
     protected function createSource(IngestionClient $client, int $storeId): string
     {
+        $existingId = $this->findExistingSource($client, $storeId);
+        if ($existingId !== null) {
+            return $existingId;
+        }
+
         $response = $client->createSource([
             'type' => 'push',
             'name' => 'magento-' . $storeId,
         ]);
         return $response->getSourceID();
+    }
+
+    protected function findExistingSource(IngestionClient $client, int $storeId): ?string
+    {
+        $sourceName = 'magento-' . $storeId;
+        $page = 1;
+
+        do {
+            $response = $client->listSources(self::DESTINATIONS_PAGE_SIZE, $page, ['push']);
+
+            if (is_array($response)) {
+                break;
+            }
+
+            $nbPages = $response->getPagination()->getNbPages() ?? 1;
+
+            foreach ($response->getSources() as $source) {
+                if ($source->getName() === $sourceName) {
+                    return $source->getSourceID();
+                }
+            }
+
+            $page++;
+        } while ($page <= $nbPages);
+
+        return null;
     }
 
     protected function createTask(IngestionClient $client, string $sourceId, string $destId): string
