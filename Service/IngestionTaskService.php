@@ -140,35 +140,30 @@ class IngestionTaskService implements IngestionTaskServiceInterface
 
         do {
             $response = $client->listDestinations(self::DESTINATIONS_PAGE_SIZE, $page, ['search']);
+            [$destinations, $nbPages] = $this->extractListResponse($response, 'destinations');
 
-            if (is_array($response)) {
-                break;
-            }
-
-            $nbPages = $response->getPagination()->getNbPages() ?? 1;
-
-            foreach ($response->getDestinations() as $destination) {
-                if ($destination->getOwner() !== null) {
+            foreach ($destinations as $destination) {
+                $dest = $this->normalizeDestination($destination);
+                if ($dest['owner'] !== null) {
                     continue;
                 }
-                if ($destination->getInput()->getIndexName() !== $indexName) {
+                if ($dest['indexName'] !== $indexName) {
                     continue;
                 }
 
-                $destId = $destination->getDestinationID();
-                $tasksResponse = $client->listTasks(null, null, null, null, null, ['push'], [$destId]);
-                $tasks = $tasksResponse->getTasks();
+                $tasksResponse = $client->listTasks(null, null, null, null, null, ['push'], [$dest['destinationID']]);
+                [$tasks] = $this->extractListResponse($tasksResponse, 'tasks');
 
                 if (!empty($tasks)) {
-                    $taskId = $tasks[0]->getTaskID();
+                    $taskId = $this->normalizeTask($tasks[0])['taskID'];
                     $this->persistTask($storeId, $indexName, $taskId, null, null);
                     return $taskId;
                 }
 
                 // Destination exists but has no push task - create source + task only
                 $sourceId = $this->createSource($client, $storeId);
-                $taskId = $this->createTask($client, $sourceId, $destId);
-                $this->persistTask($storeId, $indexName, $taskId, $sourceId, $destId);
+                $taskId = $this->createTask($client, $sourceId, $dest['destinationID']);
+                $this->persistTask($storeId, $indexName, $taskId, $sourceId, $dest['destinationID']);
                 return $taskId;
             }
 
@@ -221,16 +216,12 @@ class IngestionTaskService implements IngestionTaskServiceInterface
 
         do {
             $response = $client->listSources(self::DESTINATIONS_PAGE_SIZE, $page, ['push']);
+            [$sources, $nbPages] = $this->extractListResponse($response, 'sources');
 
-            if (is_array($response)) {
-                break;
-            }
-
-            $nbPages = $response->getPagination()->getNbPages() ?? 1;
-
-            foreach ($response->getSources() as $source) {
-                if ($source->getName() === $sourceName) {
-                    return $source->getSourceID();
+            foreach ($sources as $source) {
+                $src = $this->normalizeSource($source);
+                if ($src['name'] === $sourceName) {
+                    return $src['sourceID'];
                 }
             }
 
@@ -238,6 +229,65 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         } while ($page <= $nbPages);
 
         return null;
+    }
+
+    /**
+     * Normalize a list API response that may be either a typed response object
+     * or a plain associative array. Returns [items[], nbPages].
+     */
+    protected function extractListResponse($response, string $itemsKey): array
+    {
+        if (is_array($response)) {
+            $items = $response[$itemsKey] ?? [];
+            $nbPages = $response['pagination']['nbPages'] ?? 1;
+            return [$items, $nbPages];
+        }
+
+        $getter = 'get' . ucfirst($itemsKey);
+        $items = $response->{$getter}();
+        $nbPages = $response->getPagination()->getNbPages() ?? 1;
+        return [$items, $nbPages];
+    }
+
+    protected function normalizeDestination($destination): array
+    {
+        if (is_array($destination)) {
+            return [
+                'destinationID' => $destination['destinationID'] ?? null,
+                'owner' => $destination['owner'] ?? null,
+                'indexName' => $destination['input']['indexName'] ?? null,
+            ];
+        }
+
+        return [
+            'destinationID' => $destination->getDestinationID(),
+            'owner' => $destination->getOwner(),
+            'indexName' => $destination->getInput()->getIndexName(),
+        ];
+    }
+
+    protected function normalizeSource($source): array
+    {
+        if (is_array($source)) {
+            return [
+                'sourceID' => $source['sourceID'] ?? null,
+                'name' => $source['name'] ?? null,
+            ];
+        }
+
+        return [
+            'sourceID' => $source->getSourceID(),
+            'name' => $source->getName(),
+        ];
+    }
+
+    protected function normalizeTask($task): array
+    {
+        if (is_array($task)) {
+            return ['taskID' => $task['taskID'] ?? null];
+        }
+
+        return ['taskID' => $task->getTaskID()];
     }
 
     protected function createTask(IngestionClient $client, string $sourceId, string $destId): string
