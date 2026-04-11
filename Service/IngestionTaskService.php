@@ -186,7 +186,6 @@ class IngestionTaskService implements IngestionTaskServiceInterface
             'type' => 'search',
             'name' => 'magento-' . $storeId . '-' . $indexName,
             'input' => ['indexName' => $indexName],
-            'transformationIDs' => [],
         ]);
         $destId = $destResponse->getDestinationID();
 
