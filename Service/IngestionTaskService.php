@@ -5,6 +5,7 @@ namespace Algolia\Ingestion\Service;
 use Algolia\AlgoliaSearch\Api\IngestionClient;
 use Algolia\AlgoliaSearch\Exceptions\AlgoliaException;
 use Algolia\AlgoliaSearch\Exceptions\NotFoundException;
+use Algolia\AlgoliaSearch\Helper\ConfigHelper;
 use Algolia\Ingestion\Api\IngestionClientProviderInterface;
 use Algolia\Ingestion\Api\IngestionTaskServiceInterface;
 use Algolia\Ingestion\Helper\IngestionConfigHelper;
@@ -24,6 +25,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
     public function __construct(
         protected IngestionClientProviderInterface $clientProvider,
         protected IngestionConfigHelper $configHelper,
+        protected ConfigHelper $algoliaConfigHelper,
         protected IngestionTaskFactory $taskFactory,
         protected IngestionTaskResource $taskResource,
         protected CollectionFactory $collectionFactory
@@ -174,24 +176,67 @@ class IngestionTaskService implements IngestionTaskServiceInterface
     }
 
     /**
-     * Create a full push pipeline (source + destination + task) for the
+     * Create a full push pipeline (source + authentication + destination + task) for the
      * given store and index. Returns the new task UUID.
      * @throws AlreadyExistsException
      */
     protected function createFullPipeline(IngestionClient $client, int $storeId, string $indexName): string
     {
         $sourceId = $this->createSource($client, $storeId);
+        $authId   = $this->createAuthentication($client, $storeId);
 
         $destResponse = $client->createDestination([
-            'type' => 'search',
-            'name' => 'magento-' . $storeId . '-' . $indexName,
-            'input' => ['indexName' => $indexName],
+            'type'             => 'search',
+            'name'             => 'magento-' . $storeId . '-' . $indexName,
+            'input'            => ['indexName' => $indexName],
+            'authenticationID' => $authId,
         ]);
         $destId = $destResponse->getDestinationID();
 
         $taskId = $this->createTask($client, $sourceId, $destId);
-        $this->persistTask($storeId, $indexName, $taskId, $sourceId, $destId);
+        $this->persistTask($storeId, $indexName, $taskId, $sourceId, $destId, $authId);
         return $taskId;
+    }
+
+    protected function createAuthentication(IngestionClient $client, int $storeId): string
+    {
+        $existingId = $this->findExistingAuthentication($client, $storeId);
+        if ($existingId !== null) {
+            return $existingId;
+        }
+
+        $response = $client->createAuthentication([
+            'type'  => 'algolia',
+            'name'  => 'magento-' . $storeId,
+            'input' => [
+                'appID'  => $this->algoliaConfigHelper->getApplicationID($storeId),
+                'apiKey' => $this->algoliaConfigHelper->getAPIKey($storeId),
+            ],
+        ]);
+
+        return $response->getAuthenticationID();
+    }
+
+    protected function findExistingAuthentication(IngestionClient $client, int $storeId): ?string
+    {
+        $authName = 'magento-' . $storeId;
+        $page = 1;
+
+        do {
+            $response = $client->listAuthentications(self::DESTINATIONS_PAGE_SIZE, $page, ['algolia']);
+            [$authentications, $nbPages] = $this->extractListResponse($response, 'authentications');
+
+            foreach ($authentications as $authentication) {
+                $auth = $this->normalizeAuthentication($authentication);
+                if ($auth['name'] === $authName) {
+                    return $auth['authenticationID'];
+                }
+            }
+
+            $page++;
+        } while ($page <= $nbPages);
+
+        return null;
     }
 
     protected function createSource(IngestionClient $client, int $storeId): string
@@ -289,6 +334,21 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         return ['taskID' => $task->getTaskID()];
     }
 
+    protected function normalizeAuthentication($authentication): array
+    {
+        if (is_array($authentication)) {
+            return [
+                'authenticationID' => $authentication['authenticationID'] ?? null,
+                'name'             => $authentication['name'] ?? null,
+            ];
+        }
+
+        return [
+            'authenticationID' => $authentication->getAuthenticationID(),
+            'name'             => $authentication->getName(),
+        ];
+    }
+
     protected function createTask(IngestionClient $client, string $sourceId, string $destId): string
     {
         // For Push sources the task-level action field is required by the API schema but is a
@@ -311,15 +371,17 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         string $indexName,
         string $taskId,
         ?string $sourceId,
-        ?string $destinationId
+        ?string $destinationId,
+        ?string $authenticationId = null
     ): void {
         $task = $this->taskFactory->create();
         $task->setData([
-            'store_id' => $storeId,
-            'index_name' => $indexName,
-            'task_id' => $taskId,
-            'source_id' => $sourceId,
-            'destination_id' => $destinationId,
+            'store_id'          => $storeId,
+            'index_name'        => $indexName,
+            'task_id'           => $taskId,
+            'source_id'         => $sourceId,
+            'destination_id'    => $destinationId,
+            'authentication_id' => $authenticationId,
         ]);
         $this->taskResource->save($task);
     }
