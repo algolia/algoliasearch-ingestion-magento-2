@@ -163,7 +163,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
                 }
 
                 // Destination exists but has no push task - create source + task only
-                $sourceId = $this->createSource($client, $storeId);
+                $sourceId = $this->getSource($client, $storeId);
                 $taskId = $this->createTask($client, $sourceId, $dest['destinationID']);
                 $this->persistTask($storeId, $indexName, $taskId, $sourceId, $dest['destinationID']);
                 return $taskId;
@@ -182,8 +182,8 @@ class IngestionTaskService implements IngestionTaskServiceInterface
      */
     protected function createFullPipeline(IngestionClient $client, int $storeId, string $indexName): string
     {
-        $sourceId = $this->createSource($client, $storeId);
-        $authId   = $this->createAuthentication($client, $storeId);
+        $sourceId = $this->getSource($client, $storeId);
+        $authId   = $this->getAuthentication($client, $storeId);
 
         $destResponse = $client->createDestination([
             'type'             => 'search',
@@ -191,14 +191,14 @@ class IngestionTaskService implements IngestionTaskServiceInterface
             'input'            => ['indexName' => $indexName],
             'authenticationID' => $authId,
         ]);
-        $destId = $destResponse->getDestinationID();
+        $destId = $this->normalizeDestination($destResponse)['destination_id'];
 
         $taskId = $this->createTask($client, $sourceId, $destId);
         $this->persistTask($storeId, $indexName, $taskId, $sourceId, $destId, $authId);
         return $taskId;
     }
 
-    protected function createAuthentication(IngestionClient $client, int $storeId): string
+    protected function getAuthentication(IngestionClient $client, int $storeId): string
     {
         $existingId = $this->findExistingAuthentication($client, $storeId);
         if ($existingId !== null) {
@@ -214,7 +214,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
             ],
         ]);
 
-        return $response->getAuthenticationID();
+        return $this->normalizeAuthentication($response)['authenticationID'];
     }
 
     protected function findExistingAuthentication(IngestionClient $client, int $storeId): ?string
@@ -239,7 +239,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         return null;
     }
 
-    protected function createSource(IngestionClient $client, int $storeId): string
+    protected function getSource(IngestionClient $client, int $storeId): string
     {
         $existingId = $this->findExistingSource($client, $storeId);
         if ($existingId !== null) {
