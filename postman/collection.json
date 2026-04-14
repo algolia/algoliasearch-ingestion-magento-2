@@ -2,7 +2,7 @@
   "info": {
     "name": "Algolia Ingestion API",
     "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    "description": "Read-only endpoints for the Algolia Ingestion (Connectors) API. Covers authentications, destinations, sources, tasks, and transformations.",
+    "description": "Read and write endpoints for the Algolia Ingestion (Connectors) API. Covers authentications, destinations, sources, tasks, and transformations.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [
@@ -21,7 +21,7 @@
     {
       "key": "baseUrl",
       "value": "https://data.us.algolia.com",
-      "description": "Override via the active Postman environment. Change region as needed (us, eu, de, au)."
+      "description": "Override via the active Postman environment. Change region as needed (us, eu)."
     }
   ],
   "item": [
@@ -67,6 +67,73 @@
               ]
             },
             "description": "Retrieve a single authentication by ID. Set `authenticationID` in the active environment."
+          }
+        },
+        {
+          "name": "Create Authentication",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"algolia\",\n  \"name\": \"My Algolia Auth\",\n  \"input\": {\n    \"appID\": \"{{algoliaAppId}}\",\n    \"apiKey\": \"{{algoliaApiKey}}\"\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/1/authentications",
+              "host": ["{{baseUrl}}"],
+              "path": ["1", "authentications"]
+            },
+            "description": "Create a new authentication resource. Required fields: `type`, `name`, `input`. Optional fields: `platform`. The `input` shape varies by `type` (e.g. algolia, basic, oauth, googleServiceAccount)."
+          }
+        },
+        {
+          "name": "Update Authentication",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Auth Name\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/1/authentications/:authenticationID",
+              "host": ["{{baseUrl}}"],
+              "path": ["1", "authentications", ":authenticationID"],
+              "variable": [
+                {
+                  "key": "authenticationID",
+                  "value": "{{authenticationID}}",
+                  "description": "Set authenticationID in your Postman environment."
+                }
+              ]
+            },
+            "description": "Partially update an authentication resource (PATCH). All fields are optional — only send fields you want to change. Updatable fields: `name`, `input`."
+          }
+        },
+        {
+          "name": "Delete Authentication",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/1/authentications/:authenticationID",
+              "host": ["{{baseUrl}}"],
+              "path": ["1", "authentications", ":authenticationID"],
+              "variable": [
+                {
+                  "key": "authenticationID",
+                  "value": "{{authenticationID}}",
+                  "description": "Set authenticationID in your Postman environment."
+                }
+              ]
+            },
+            "description": "Delete an authentication resource by ID. This is irreversible. Set `authenticationID` in the active environment."
           }
         }
       ]
@@ -115,6 +182,73 @@
             },
             "description": "Retrieve a single destination by ID. Set `destinationID` in the active environment."
           }
+        },
+        {
+          "name": "Create Destination",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"search\",\n  \"name\": \"My Destination\",\n  \"input\": {\n    \"indexName\": \"my_index\"\n  },\n  \"authenticationID\": \"{{authenticationID}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/1/destinations",
+              "host": ["{{baseUrl}}"],
+              "path": ["1", "destinations"]
+            },
+            "description": "Create a new destination resource. Required fields: `type`, `name`, `input`. Optional fields: `authenticationID`, `transformationIDs` (array of transformation UUIDs)."
+          }
+        },
+        {
+          "name": "Update Destination",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Destination Name\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/1/destinations/:destinationID",
+              "host": ["{{baseUrl}}"],
+              "path": ["1", "destinations", ":destinationID"],
+              "variable": [
+                {
+                  "key": "destinationID",
+                  "value": "{{destinationID}}",
+                  "description": "Set destinationID in your Postman environment."
+                }
+              ]
+            },
+            "description": "Partially update a destination resource (PATCH). All fields are optional. Updatable fields: `type`, `name`, `input`, `authenticationID`, `transformationIDs`."
+          }
+        },
+        {
+          "name": "Delete Destination",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/1/destinations/:destinationID",
+              "host": ["{{baseUrl}}"],
+              "path": ["1", "destinations", ":destinationID"],
+              "variable": [
+                {
+                  "key": "destinationID",
+                  "value": "{{destinationID}}",
+                  "description": "Set destinationID in your Postman environment."
+                }
+              ]
+            },
+            "description": "Delete a destination resource by ID. This is irreversible. Set `destinationID` in the active environment."
+          }
         }
       ]
     },
@@ -160,6 +294,73 @@
               ]
             },
             "description": "Retrieve a single source by ID. Set `sourceID` in the active environment."
+          }
+        },
+        {
+          "name": "Create Source",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"push\",\n  \"name\": \"My Push Source\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/1/sources",
+              "host": ["{{baseUrl}}"],
+              "path": ["1", "sources"]
+            },
+            "description": "Create a new source resource. Required fields: `type`, `name`. Optional fields: `input` (source-type specific config), `authenticationID`."
+          }
+        },
+        {
+          "name": "Update Source",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Source Name\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/1/sources/:sourceID",
+              "host": ["{{baseUrl}}"],
+              "path": ["1", "sources", ":sourceID"],
+              "variable": [
+                {
+                  "key": "sourceID",
+                  "value": "{{sourceID}}",
+                  "description": "Set sourceID in your Postman environment."
+                }
+              ]
+            },
+            "description": "Partially update a source resource (PATCH). All fields are optional. Updatable fields: `name`, `input`, `authenticationID`."
+          }
+        },
+        {
+          "name": "Delete Source",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/1/sources/:sourceID",
+              "host": ["{{baseUrl}}"],
+              "path": ["1", "sources", ":sourceID"],
+              "variable": [
+                {
+                  "key": "sourceID",
+                  "value": "{{sourceID}}",
+                  "description": "Set sourceID in your Postman environment."
+                }
+              ]
+            },
+            "description": "Delete a source resource by ID. This is irreversible. Set `sourceID` in the active environment."
           }
         }
       ]
@@ -212,6 +413,100 @@
             },
             "description": "Retrieve a single task by ID. Note: tasks use API version /2/. Set `taskID` in the active environment."
           }
+        },
+        {
+          "name": "Create Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceID\": \"{{sourceID}}\",\n  \"destinationID\": \"{{destinationID}}\",\n  \"action\": \"replace\",\n  \"enabled\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/2/tasks",
+              "host": ["{{baseUrl}}"],
+              "path": ["2", "tasks"]
+            },
+            "description": "Create a new task (API v2). Required fields: `sourceID`, `destinationID`, `action`. Optional fields: `cron` (schedule expression), `enabled`, `failureThreshold`, `input`, `cursor` (RFC 3339), `notifications`, `policies`, `subscriptionAction`."
+          }
+        },
+        {
+          "name": "Update Task",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": false\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/2/tasks/:taskID",
+              "host": ["{{baseUrl}}"],
+              "path": ["2", "tasks", ":taskID"],
+              "variable": [
+                {
+                  "key": "taskID",
+                  "value": "{{taskID}}",
+                  "description": "Set taskID in your Postman environment."
+                }
+              ]
+            },
+            "description": "Partially update a task (PATCH, API v2). All fields are optional. Updatable fields: `destinationID`, `cron`, `input`, `enabled`, `failureThreshold`, `notifications`, `policies`, `subscriptionAction`."
+          }
+        },
+        {
+          "name": "Replace Task",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"destinationID\": \"{{destinationID}}\",\n  \"action\": \"replace\",\n  \"enabled\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/2/tasks/:taskID",
+              "host": ["{{baseUrl}}"],
+              "path": ["2", "tasks", ":taskID"],
+              "variable": [
+                {
+                  "key": "taskID",
+                  "value": "{{taskID}}",
+                  "description": "Set taskID in your Postman environment."
+                }
+              ]
+            },
+            "description": "Fully replace a task (PUT, API v2). Required fields: `destinationID`, `action`. Optional fields: `cron`, `enabled`, `failureThreshold`, `input`, `cursor` (RFC 3339), `notifications`, `policies`, `subscriptionAction`."
+          }
+        },
+        {
+          "name": "Delete Task",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/2/tasks/:taskID",
+              "host": ["{{baseUrl}}"],
+              "path": ["2", "tasks", ":taskID"],
+              "variable": [
+                {
+                  "key": "taskID",
+                  "value": "{{taskID}}",
+                  "description": "Set taskID in your Postman environment."
+                }
+              ]
+            },
+            "description": "Delete a task by ID (API v2). This is irreversible. Set `taskID` in the active environment."
+          }
         }
       ]
     },
@@ -256,6 +551,73 @@
               ]
             },
             "description": "Retrieve a single transformation by ID. Set `transformationID` in the active environment."
+          }
+        },
+        {
+          "name": "Create Transformation",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"My Transformation\",\n  \"type\": \"code\",\n  \"input\": {\n    \"code\": \"// transformation code here\"\n  },\n  \"description\": \"Description of what this transformation does\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/1/transformations",
+              "host": ["{{baseUrl}}"],
+              "path": ["1", "transformations"]
+            },
+            "description": "Create a new transformation resource. Required field: `name`. Optional fields: `type`, `input` (contains `code`), `description`, `authenticationIDs` (array of authentication UUIDs). Note: the `code` top-level field is deprecated — use `input.code` instead."
+          }
+        },
+        {
+          "name": "Update Transformation",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"My Transformation\",\n  \"type\": \"code\",\n  \"input\": {\n    \"code\": \"// updated transformation code here\"\n  },\n  \"description\": \"Updated description\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/1/transformations/:transformationID",
+              "host": ["{{baseUrl}}"],
+              "path": ["1", "transformations", ":transformationID"],
+              "variable": [
+                {
+                  "key": "transformationID",
+                  "value": "{{transformationID}}",
+                  "description": "Set transformationID in your Postman environment."
+                }
+              ]
+            },
+            "description": "Fully replace a transformation (PUT). This is a full replacement — include all fields you want to keep. Same field shape as Create Transformation. Set `transformationID` in the active environment."
+          }
+        },
+        {
+          "name": "Delete Transformation",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/1/transformations/:transformationID",
+              "host": ["{{baseUrl}}"],
+              "path": ["1", "transformations", ":transformationID"],
+              "variable": [
+                {
+                  "key": "transformationID",
+                  "value": "{{transformationID}}",
+                  "description": "Set transformationID in your Postman environment."
+                }
+              ]
+            },
+            "description": "Delete a transformation resource by ID. This is irreversible. Set `transformationID` in the active environment."
           }
         }
       ]
