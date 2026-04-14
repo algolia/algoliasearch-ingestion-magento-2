@@ -511,6 +511,109 @@
       ]
     },
     {
+      "name": "Observability",
+      "item": [
+        {
+          "name": "List Runs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/1/runs",
+              "host": ["{{baseUrl}}"],
+              "path": ["1", "runs"],
+              "query": [
+                { "key": "itemsPerPage", "value": "20", "disabled": true, "description": "Number of items per page." },
+                { "key": "page", "value": "1", "disabled": true, "description": "Page number (1-based)." },
+                { "key": "status", "value": "succeeded", "disabled": true, "description": "Filter by run status (created, started, succeeded, failed, partial). Repeat this key for multiple values." },
+                { "key": "taskID", "value": "", "disabled": true, "description": "Filter by task ID. Repeat this key for multiple values." },
+                { "key": "sort", "value": "createdAt", "disabled": true, "description": "Field to sort by." },
+                { "key": "order", "value": "desc", "disabled": true, "description": "Sort direction: asc or desc." },
+                { "key": "startDate", "value": "", "disabled": true, "description": "Filter runs created on or after this date (RFC 3339)." },
+                { "key": "endDate", "value": "", "disabled": true, "description": "Filter runs created on or before this date (RFC 3339)." }
+              ]
+            },
+            "description": "Retrieve a paginated list of task runs. Enable query params as needed. Use `status` to filter by run outcome and `taskID` to scope to a specific task."
+          }
+        },
+        {
+          "name": "Get Run",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/1/runs/:runID",
+              "host": ["{{baseUrl}}"],
+              "path": ["1", "runs", ":runID"],
+              "variable": [
+                {
+                  "key": "runID",
+                  "value": "{{runID}}",
+                  "description": "Set runID in your Postman environment."
+                }
+              ]
+            },
+            "description": "Retrieve a single task run by ID. Set `runID` in the active environment."
+          }
+        },
+        {
+          "name": "List Events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/1/runs/:runID/events",
+              "host": ["{{baseUrl}}"],
+              "path": ["1", "runs", ":runID", "events"],
+              "variable": [
+                {
+                  "key": "runID",
+                  "value": "{{runID}}",
+                  "description": "Set runID in your Postman environment."
+                }
+              ],
+              "query": [
+                { "key": "itemsPerPage", "value": "20", "disabled": true, "description": "Number of items per page." },
+                { "key": "page", "value": "1", "disabled": true, "description": "Page number (1-based)." },
+                { "key": "status", "value": "created", "disabled": true, "description": "Filter by event status (created, started, succeeded, failed). Repeat this key for multiple values." },
+                { "key": "type", "value": "fetch", "disabled": true, "description": "Filter by event type (fetch, push, transform, validate). Repeat this key for multiple values." },
+                { "key": "sort", "value": "createdAt", "disabled": true, "description": "Field to sort by." },
+                { "key": "order", "value": "desc", "disabled": true, "description": "Sort direction: asc or desc." },
+                { "key": "startDate", "value": "", "disabled": true, "description": "Filter events created on or after this date (RFC 3339)." },
+                { "key": "endDate", "value": "", "disabled": true, "description": "Filter events created on or before this date (RFC 3339)." }
+              ]
+            },
+            "description": "Retrieve a paginated list of events for a specific task run. Set `runID` in the active environment. Enable query params as needed. Use `status` and `type` to narrow results."
+          }
+        },
+        {
+          "name": "Get Event",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/1/runs/:runID/events/:eventID",
+              "host": ["{{baseUrl}}"],
+              "path": ["1", "runs", ":runID", "events", ":eventID"],
+              "variable": [
+                {
+                  "key": "runID",
+                  "value": "{{runID}}",
+                  "description": "Set runID in your Postman environment."
+                },
+                {
+                  "key": "eventID",
+                  "value": "{{eventID}}",
+                  "description": "Set eventID in your Postman environment."
+                }
+              ]
+            },
+            "description": "Retrieve a single event within a task run by its ID. Set both `runID` and `eventID` in the active environment."
+          }
+        }
+      ]
+    },
+    {
       "name": "Transformations",
       "item": [
         {

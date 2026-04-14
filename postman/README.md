@@ -1,6 +1,6 @@
 # Algolia Ingestion API - Postman Collection
 
-Read-only sample requests for the Algolia Ingestion (Connectors) API, covering authentications, destinations, sources, tasks, and transformations.
+Full CRUD requests for the Algolia Ingestion (Connectors) API, covering authentications, destinations, sources, tasks, transformations, and observability (runs and events).
 
 ## Prerequisites
 
@@ -10,7 +10,7 @@ Read-only sample requests for the Algolia Ingestion (Connectors) API, covering a
 
 ## Import
 
-1. Open Postman and choose File → **Import** (top left).
+1. Open Postman and choose File -> **Import** (top left).
 2. Import `collection.json`.
 3. Import `environment.example.json` as a separate import.
 
@@ -36,6 +36,19 @@ The `baseUrl` defaults to `https://data.us.algolia.com`. Change the region segme
 | America (US) | `https://data.us.algolia.com` |
 | Europe (EU) | `https://data.eu.algolia.com` |
 
+## Collection structure
+
+The collection is organized into six folders, one per resource type:
+
+| Folder | Requests | API version |
+|---|---|---|
+| Authentications | List, Get, Create, Update (PATCH), Delete | `/1/` |
+| Destinations | List, Get, Create, Update (PATCH), Delete | `/1/` |
+| Sources | List, Get, Create, Update (PATCH), Delete | `/1/` |
+| Tasks | List, Get, Create, Update (PATCH), Replace (PUT), Delete | `/2/` |
+| Transformations | List, Get, Create, Update (PUT), Delete | `/1/` |
+| Observability | List Runs, Get Run, List Events, Get Event | `/1/` |
+
 ## Running list requests
 
 Each list endpoint (`List Authentications`, `List Destinations`, etc.) includes all supported query parameters pre-filled with example values but **disabled by default**. To use them:
@@ -44,7 +57,7 @@ Each list endpoint (`List Authentications`, `List Destinations`, etc.) includes 
 2. Check the checkbox next to any parameter you want to include.
 3. Adjust the value as needed and send.
 
-> **Array parameters** (`type`, `authenticationID`, `sourceID`, etc.) accept multiple values by repeating the key. Add a new row with the same key name for each additional value.
+> **Array parameters** (`type`, `authenticationID`, `sourceID`, `status`, etc.) accept multiple values by repeating the key. Add a new row with the same key name for each additional value.
 
 ## Running get requests
 
@@ -53,6 +66,37 @@ Each get endpoint (`Get Authentication`, `Get Destination`, etc.) uses a path va
 1. Run the relevant list request first to find a valid resource ID.
 2. Copy the ID and paste it into the environment variable (`authenticationID`, `destinationID`, etc.).
 3. Send the get request.
+
+## Running write requests
+
+Each create, update, and delete request includes a minimal JSON body pre-filled with required fields.
+
+- **Create (POST)** - Required fields are populated using environment variables where applicable (e.g. `{{sourceID}}`, `{{authenticationID}}`). Adjust values before sending.
+- **Update/PATCH** - Sends only the fields you want to change. Expand the body with additional fields as needed.
+- **Replace/PUT** (tasks and transformations only) - Full replacement. Include all fields you want to keep, not just the changed ones.
+- **Delete** - No body required. Set the relevant ID environment variable and send.
+
+> **Tasks have two update verbs:** `Update Task` (PATCH) for partial updates and `Replace Task` (PUT) for full replacement. This matches the upstream API which exposes both `updateTask` and `replaceTask` as distinct operations.
+
+> **Transformations use PUT for updates** (not PATCH) because the upstream API replaces the full transformation object.
+
+## Running observability requests
+
+Runs and events let you monitor the execution history of your tasks.
+
+**Typical workflow:**
+
+1. Run `List Runs` to find recent task runs. Use the `taskID` query parameter to filter by a specific task.
+2. Copy a `runID` from the response and set it in your Postman environment.
+3. Run `Get Run` to inspect a single run, or `List Events` to see the individual steps within that run.
+4. To inspect a specific event, copy an `eventID` from the List Events response, set it in the environment, and run `Get Event`.
+
+**Environment variables used by Observability requests:**
+
+| Variable | Description |
+|---|---|
+| `runID` | ID of a specific task run |
+| `eventID` | ID of a specific event within a run |
 
 ## API versioning note
 
