@@ -525,7 +525,7 @@
               "query": [
                 { "key": "itemsPerPage", "value": "20", "disabled": true, "description": "Number of items per page." },
                 { "key": "page", "value": "1", "disabled": true, "description": "Page number (1-based)." },
-                { "key": "status", "value": "succeeded", "disabled": true, "description": "Filter by run status (created, started, succeeded, failed, partial). Repeat this key for multiple values." },
+                { "key": "status", "value": "finished", "disabled": true, "description": "Filter by run status (created, started, finished, skipped). Repeat this key for multiple values." },
                 { "key": "taskID", "value": "", "disabled": true, "description": "Filter by task ID. Repeat this key for multiple values." },
                 { "key": "sort", "value": "createdAt", "disabled": true, "description": "Field to sort by." },
                 { "key": "order", "value": "desc", "disabled": true, "description": "Sort direction: asc or desc." },
@@ -575,7 +575,7 @@
               "query": [
                 { "key": "itemsPerPage", "value": "20", "disabled": true, "description": "Number of items per page." },
                 { "key": "page", "value": "1", "disabled": true, "description": "Page number (1-based)." },
-                { "key": "status", "value": "created", "disabled": true, "description": "Filter by event status (created, started, succeeded, failed). Repeat this key for multiple values." },
+                { "key": "status", "value": "created", "disabled": true, "description": "Filter by event status (created, started, retried, failed, succeeded, critical). Repeat this key for multiple values." },
                 { "key": "type", "value": "fetch", "disabled": true, "description": "Filter by event type (fetch, push, transform, validate). Repeat this key for multiple values." },
                 { "key": "sort", "value": "createdAt", "disabled": true, "description": "Field to sort by." },
                 { "key": "order", "value": "desc", "disabled": true, "description": "Sort direction: asc or desc." },
