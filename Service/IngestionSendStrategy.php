@@ -83,7 +83,9 @@ class IngestionSendStrategy implements SendStrategyInterface
 
             $this->taskService->invalidate($storeId, $indexName);
             $taskId = $this->taskService->getTaskId($storeId, $indexName);
-            return $client->pushTask($taskId, ['action' => $action, 'records' => $records]);
+            $response = $this->normalizePushResponse($client->pushTask($taskId, ['action' => $action, 'records' => $records]));
+            $this->logger->info('Ingestion pushTask response', array_merge(['storeId' => $storeId, 'indexName' => $indexName], $response));
+            return $response;
         }
     }
 
@@ -95,14 +97,42 @@ class IngestionSendStrategy implements SendStrategyInterface
     ): array {
         $payload = ['action' => $action, 'records' => $records];
         $indexName = $indexOptions->getIndexName();
+        $storeId = $indexOptions->getStoreId();
 
         if ($this->indexNameFetcher->isTempIndex($indexName)) {
             $productionIndexName = substr($indexName, 0, -strlen(IndexNameFetcher::INDEX_TEMP_SUFFIX));
-            return $client->push($indexName, $payload, null, $productionIndexName);
+            $response = $this->normalizePushResponse($client->push($indexName, $payload, null, $productionIndexName));
+            $this->logger->info('Ingestion push response', array_merge(['storeId' => $storeId, 'indexName' => $indexName], $response));
+            return $response;
         }
 
-        $taskId = $this->taskService->getTaskId($indexOptions->getStoreId(), $indexName);
-        return $client->pushTask($taskId, $payload);
+        $taskId = $this->taskService->getTaskId($storeId, $indexName);
+        $response = $this->normalizePushResponse($client->pushTask($taskId, $payload));
+        $this->logger->info('Ingestion pushTask response', array_merge(['storeId' => $storeId, 'indexName' => $indexName], $response));
+        return $response;
+    }
+
+    /**
+     * @param array<string, mixed>|object $response
+     * @return array{runID: string|null, eventID: string|null, message: string|null, createdAt: string|null}
+     */
+    protected function normalizePushResponse($response): array
+    {
+        if (is_array($response)) {
+            return [
+                'runID'     => $response['runID'] ?? null,
+                'eventID'   => $response['eventID'] ?? null,
+                'message'   => $response['message'] ?? null,
+                'createdAt' => $response['createdAt'] ?? null,
+            ];
+        }
+
+        return [
+            'runID'     => $response->getRunID(),
+            'eventID'   => $response->getEventID(),
+            'message'   => $response->getMessage(),
+            'createdAt' => $response->getCreatedAt(),
+        ];
     }
 
     protected function handleError(\Throwable $e, IndexOptionsInterface $indexOptions, array $requests): array
