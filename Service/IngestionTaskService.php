@@ -250,7 +250,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
             'type' => 'push',
             'name' => 'magento-' . $storeId,
         ]);
-        return $response->getSourceID();
+        return $this->normalizeSource($response)['sourceID'];
     }
 
     protected function findExistingSource(IngestionClient $client, int $storeId): ?string
@@ -360,7 +360,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
             'destinationID' => $destId,
             'action' => 'save',
         ]);
-        return $response->getTaskID();
+        return $this->normalizeTask($response)['taskID'];
     }
 
     /**

@@ -102,13 +102,28 @@ class IngestionSendStrategy implements SendStrategyInterface
         if ($this->indexNameFetcher->isTempIndex($indexName)) {
             $productionIndexName = substr($indexName, 0, -strlen(IndexNameFetcher::INDEX_TEMP_SUFFIX));
             $response = $this->normalizePushResponse($client->push($indexName, $payload, null, $productionIndexName));
-            $this->logger->info('Ingestion push response', array_merge(['storeId' => $storeId, 'indexName' => $indexName], $response));
+            $this->logger->info(
+                'Ingestion push response',
+                array_merge([
+                    'storeId'   => $storeId,
+                    'indexName' => $indexName,
+                    'action'    => $payload['action']
+                ], $response)
+            );
             return $response;
         }
 
         $taskId = $this->taskService->getTaskId($storeId, $indexName);
         $response = $this->normalizePushResponse($client->pushTask($taskId, $payload));
-        $this->logger->info('Ingestion pushTask response', array_merge(['storeId' => $storeId, 'indexName' => $indexName], $response));
+        $this->logger->info(
+            'Ingestion pushTask response',
+            array_merge([
+                'taskId'    => $taskId,
+                'storeId'   => $storeId,
+                'indexName' => $indexName,
+                'action'    => $payload['action']
+            ], $response)
+        );
         return $response;
     }
 
