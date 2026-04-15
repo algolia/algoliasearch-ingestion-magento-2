@@ -146,7 +146,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
 
             foreach ($destinations as $destination) {
                 $dest = $this->normalizeDestination($destination);
-                if ($dest['owner'] !== null) {
+                if ($this->isInternal($dest)) {
                     continue;
                 }
                 if ($dest['indexName'] !== $indexName) {
@@ -173,6 +173,12 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         } while ($page <= $nbPages);
 
         return null;
+    }
+
+    /** Internal tasks and destinations are managed by the Ingestion API and not by the extension. */
+    protected function isInternal(array $record): bool
+    {
+        return $record['owner'] !== null;
     }
 
     /**
