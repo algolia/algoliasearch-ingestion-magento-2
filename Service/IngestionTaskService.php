@@ -187,7 +187,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
 
         $destResponse = $client->createDestination([
             'type'             => 'search',
-            'name'             => 'magento-' . $storeId . '-' . $indexName,
+            'name'             => $this->getDestinationName($storeId, $indexName),
             'input'            => ['indexName' => $indexName],
             'authenticationID' => $authId,
         ]);
@@ -196,6 +196,11 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         $taskId = $this->createTask($client, $sourceId, $destId);
         $this->persistTask($storeId, $indexName, $taskId, $sourceId, $destId, $authId);
         return $taskId;
+    }
+
+    protected function getDestinationName(int $storeId, string $indexName): string
+    {
+        return 'magento-' . $storeId . '-' . $indexName;
     }
 
     protected function getAuthentication(IngestionClient $client, int $storeId): string
@@ -207,7 +212,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
 
         $response = $client->createAuthentication([
             'type'  => 'algolia',
-            'name'  => 'magento-' . $storeId,
+            'name'  => $this->getAuthenticationName($storeId),
             'input' => [
                 'appID'  => $this->algoliaConfigHelper->getApplicationID($storeId),
                 'apiKey' => $this->algoliaConfigHelper->getAPIKey($storeId),
@@ -219,7 +224,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
 
     protected function findExistingAuthentication(IngestionClient $client, int $storeId): ?string
     {
-        $authName = 'magento-' . $storeId;
+        $authName = $this->getAuthenticationName($storeId);
         $page = 1;
 
         do {
@@ -239,6 +244,11 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         return null;
     }
 
+    protected function getAuthenticationName(int $storeId): string
+    {
+        return 'magento-' . $storeId;
+    }
+
     protected function getSource(IngestionClient $client, int $storeId): string
     {
         $existingId = $this->findExistingSource($client, $storeId);
@@ -248,14 +258,14 @@ class IngestionTaskService implements IngestionTaskServiceInterface
 
         $response = $client->createSource([
             'type' => 'push',
-            'name' => 'magento-' . $storeId,
+            'name' => $this->getSourceName($storeId),
         ]);
         return $this->normalizeSource($response)['sourceID'];
     }
 
     protected function findExistingSource(IngestionClient $client, int $storeId): ?string
     {
-        $sourceName = 'magento-' . $storeId;
+        $sourceName = $this->getSourceName($storeId);
         $page = 1;
 
         do {
@@ -273,6 +283,11 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         } while ($page <= $nbPages);
 
         return null;
+    }
+
+    protected function getSourceName(int $storeId): string
+    {
+        return 'magento-' . $storeId;
     }
 
     /**

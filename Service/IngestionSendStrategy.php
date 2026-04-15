@@ -84,7 +84,15 @@ class IngestionSendStrategy implements SendStrategyInterface
             $this->taskService->invalidate($storeId, $indexName);
             $taskId = $this->taskService->getTaskId($storeId, $indexName);
             $response = $this->normalizePushResponse($client->pushTask($taskId, ['action' => $action, 'records' => $records]));
-            $this->logger->info('Ingestion pushTask response', array_merge(['storeId' => $storeId, 'indexName' => $indexName], $response));
+            $this->logger->info(
+                'Ingestion pushTask response',
+                array_merge([
+                    'taskId'    => $taskId,
+                    'storeId'   => $storeId,
+                    'indexName' => $indexName,
+                    'action'    => $action
+                ], $response)
+            );
             return $response;
         }
     }
@@ -107,7 +115,7 @@ class IngestionSendStrategy implements SendStrategyInterface
                 array_merge([
                     'storeId'   => $storeId,
                     'indexName' => $indexName,
-                    'action'    => $payload['action']
+                    'action'    => $action
                 ], $response)
             );
             return $response;
@@ -121,7 +129,7 @@ class IngestionSendStrategy implements SendStrategyInterface
                 'taskId'    => $taskId,
                 'storeId'   => $storeId,
                 'indexName' => $indexName,
-                'action'    => $payload['action']
+                'action'    => $action
             ], $response)
         );
         return $response;
