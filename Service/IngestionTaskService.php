@@ -215,7 +215,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
 
     protected function getDestinationName(int $storeId, string $indexName): string
     {
-        return 'magento-' . $storeId . '-' . $indexName;
+        return 'Magento (Store ' . $storeId . ') - ' . $indexName;
     }
 
     protected function getAuthentication(IngestionClient $client, int $storeId): string
@@ -261,7 +261,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
 
     protected function getAuthenticationName(int $storeId): string
     {
-        return 'magento-' . $storeId;
+        return 'Magento (Store ' . $storeId . ')';
     }
 
     protected function getSource(IngestionClient $client, int $storeId): string
@@ -302,7 +302,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
 
     protected function getSourceName(int $storeId): string
     {
-        return 'magento-' . $storeId;
+        return 'Magento (Store ' . $storeId . ')';
     }
 
     protected function createTask(IngestionClient $client, string $sourceId, string $destId): string
