@@ -126,6 +126,33 @@ class IngestionSendStrategy implements SendStrategyInterface
         return $response;
     }
 
+    /**
+     * @internal Experimental method - DO NOT USE
+     */
+    protected function pushToProductionIndexWithoutTask(
+        IngestionClient $client,
+        IndexOptionsInterface $indexOptions,
+        array $payload
+    ): array {
+        $indexName = $indexOptions->getIndexName();
+        $storeId = $indexOptions->getStoreId();
+
+        $response = $client->push(
+            $indexName,
+            $payload
+        );
+
+        $this->logger->info(
+            'Ingestion push response (no task)',
+            array_merge([
+                'storeId'   => $storeId,
+                'indexName' => $indexName,
+                'action'    => $payload['action']
+            ], $response)
+        );
+        return $response;
+    }
+
     protected function pushToProductionIndex(
         IngestionClient $client,
         IndexOptionsInterface $indexOptions,
@@ -183,7 +210,6 @@ class IngestionSendStrategy implements SendStrategyInterface
             return false;
         }
         $message = strtolower($e->getMessage());
-        return str_contains($message, 'task')
-            && (str_contains($message, 'zero') || str_contains($message, 'many'));
+        return str_contains($message, 'multiple tasks');
     }
 }
