@@ -148,30 +148,30 @@ class IngestionTaskService implements IngestionTaskServiceInterface
 
         do {
             $response = $client->listDestinations(self::DESTINATIONS_PAGE_SIZE, $page, ['search']);
-            [$destinations, $nbPages] = $this->extractListResponse($response, 'destinations');
+            $destinations = $response['destinations'] ?? [];
+            $nbPages = $response['pagination']['nbPages'] ?? 1;
 
             foreach ($destinations as $destination) {
-                $dest = $this->normalizeDestination($destination);
-                if ($this->isInternal($dest)) {
+                if ($this->isInternal($destination)) {
                     continue;
                 }
-                if ($dest['indexName'] !== $indexName) {
+                if (($destination['input']['indexName'] ?? null) !== $indexName) {
                     continue;
                 }
 
-                $tasksResponse = $client->listTasks(null, null, null, null, null, ['push'], [$dest['destinationID']]);
-                [$tasks] = $this->extractListResponse($tasksResponse, 'tasks');
+                $tasksResponse = $client->listTasks(null, null, null, null, null, ['push'], [$destination['destinationID']]);
+                $tasks = $tasksResponse['tasks'] ?? [];
 
                 if (!empty($tasks)) {
-                    $task = $this->normalizeTask($tasks[0]);
+                    $task = $tasks[0];
                     $this->persistTask($storeId, $indexName, $task['taskID'], $task['sourceID'], $task['destinationID']);
                     return $task['taskID'];
                 }
 
                 // Destination exists but has no push task - create source + task only
                 $sourceId = $this->getSource($client, $storeId);
-                $taskId = $this->createTask($client, $sourceId, $dest['destinationID']);
-                $this->persistTask($storeId, $indexName, $taskId, $sourceId, $dest['destinationID']);
+                $taskId = $this->createTask($client, $sourceId, $destination['destinationID']);
+                $this->persistTask($storeId, $indexName, $taskId, $sourceId, $destination['destinationID']);
                 return $taskId;
             }
 
@@ -184,7 +184,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
     /** Internal tasks and destinations are managed by the Ingestion API and not by the extension. */
     protected function isInternal(array $record): bool
     {
-        return $record['owner'] !== null;
+        return !empty($record['owner']);
     }
 
     /**
@@ -203,7 +203,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
             'input'            => ['indexName' => $indexName],
             'authenticationID' => $authId,
         ]);
-        $destId = $this->normalizeDestination($destResponse)['destination_id'];
+        $destId = $destResponse['destinationID'];
 
         $taskId = $this->createTask($client, $sourceId, $destId);
         $this->persistTask($storeId, $indexName, $taskId, $sourceId, $destId, $authId);
@@ -231,7 +231,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
             ],
         ]);
 
-        return $this->normalizeAuthentication($response)['authenticationID'];
+        return $response['authenticationID'];
     }
 
     protected function findExistingAuthentication(IngestionClient $client, int $storeId): ?string
@@ -241,12 +241,12 @@ class IngestionTaskService implements IngestionTaskServiceInterface
 
         do {
             $response = $client->listAuthentications(self::DESTINATIONS_PAGE_SIZE, $page, ['algolia']);
-            [$authentications, $nbPages] = $this->extractListResponse($response, 'authentications');
+            $authentications = $response['authentications'] ?? [];
+            $nbPages = $response['pagination']['nbPages'] ?? 1;
 
             foreach ($authentications as $authentication) {
-                $auth = $this->normalizeAuthentication($authentication);
-                if ($auth['name'] === $authName) {
-                    return $auth['authenticationID'];
+                if ($authentication['name'] === $authName) {
+                    return $authentication['authenticationID'];
                 }
             }
 
@@ -272,7 +272,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
             'type' => 'push',
             'name' => $this->getSourceName($storeId),
         ]);
-        return $this->normalizeSource($response)['sourceID'];
+        return $response['sourceID'];
     }
 
     protected function findExistingSource(IngestionClient $client, int $storeId): ?string
@@ -282,12 +282,12 @@ class IngestionTaskService implements IngestionTaskServiceInterface
 
         do {
             $response = $client->listSources(self::DESTINATIONS_PAGE_SIZE, $page, ['push']);
-            [$sources, $nbPages] = $this->extractListResponse($response, 'sources');
+            $sources = $response['sources'] ?? [];
+            $nbPages = $response['pagination']['nbPages'] ?? 1;
 
             foreach ($sources as $source) {
-                $src = $this->normalizeSource($source);
-                if ($src['name'] === $sourceName) {
-                    return $src['sourceID'];
+                if ($source['name'] === $sourceName) {
+                    return $source['sourceID'];
                 }
             }
 
@@ -302,88 +302,6 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         return 'magento-' . $storeId;
     }
 
-    /**
-     * Normalize a list API response that may be either a typed response object
-     * or a plain associative array. Returns [items[], nbPages].
-     */
-    protected function extractListResponse($response, string $itemsKey): array
-    {
-        if (is_array($response)) {
-            $items = $response[$itemsKey] ?? [];
-            $nbPages = $response['pagination']['nbPages'] ?? 1;
-            return [$items, $nbPages];
-        }
-
-        $getter = 'get' . ucfirst($itemsKey);
-        $items = $response->{$getter}();
-        $nbPages = $response->getPagination()->getNbPages() ?? 1;
-        return [$items, $nbPages];
-    }
-
-    protected function normalizeDestination($destination): array
-    {
-        if (is_array($destination)) {
-            return [
-                'destinationID' => $destination['destinationID'] ?? null,
-                'owner' => $destination['owner'] ?? null,
-                'indexName' => $destination['input']['indexName'] ?? null,
-            ];
-        }
-
-        return [
-            'destinationID' => $destination->getDestinationID(),
-            'owner' => $destination->getOwner(),
-            'indexName' => $destination->getInput()->getIndexName(),
-        ];
-    }
-
-    protected function normalizeSource($source): array
-    {
-        if (is_array($source)) {
-            return [
-                'sourceID' => $source['sourceID'] ?? null,
-                'name' => $source['name'] ?? null,
-            ];
-        }
-
-        return [
-            'sourceID' => $source->getSourceID(),
-            'name' => $source->getName(),
-        ];
-    }
-
-    protected function normalizeTask($task): array
-    {
-        if (is_array($task)) {
-            return [
-                'taskID'           => $task['taskID'] ?? null,
-                'sourceID'         => $task['sourceID'] ?? null,
-                'destinationID'    => $task['destinationID'] ?? null,
-            ];
-        }
-
-        return [
-            'taskID' => $task->getTaskID(),
-            'sourceID' => $task->getSourceID(),
-            'destinationID' => $task->getDestinationID(),
-        ];
-    }
-
-    protected function normalizeAuthentication($authentication): array
-    {
-        if (is_array($authentication)) {
-            return [
-                'authenticationID' => $authentication['authenticationID'] ?? null,
-                'name'             => $authentication['name'] ?? null,
-            ];
-        }
-
-        return [
-            'authenticationID' => $authentication->getAuthenticationID(),
-            'name'             => $authentication->getName(),
-        ];
-    }
-
     protected function createTask(IngestionClient $client, string $sourceId, string $destId): string
     {
         // For Push sources the task-level action field is required by the API schema but is a
@@ -395,7 +313,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
             'destinationID' => $destId,
             'action' => 'save',
         ]);
-        return $this->normalizeTask($response)['taskID'];
+        return $response['taskID'];
     }
 
     /**

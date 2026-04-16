@@ -109,13 +109,11 @@ class IngestionSendStrategy implements SendStrategyInterface
         $tempIndexName = $indexOptions->getIndexName();
         $storeId = $indexOptions->getStoreId();
         $productionIndexName = $this->indexNameFetcher->getOriginalIndexName($tempIndexName);
-        $response = $this->normalizePushResponse(
-            $client->push(
-                $tempIndexName,
-                $payload,
-                true, // move index operations require that this be a synchronous call
-                $productionIndexName
-            )
+        $response = $client->push(
+            $tempIndexName,
+            $payload,
+            true, // move index operations require that this be a synchronous call
+            $productionIndexName
         );
         $this->logger->info(
             'Ingestion push response',
@@ -136,7 +134,7 @@ class IngestionSendStrategy implements SendStrategyInterface
         $storeId = $indexOptions->getStoreId();
         $indexName = $indexOptions->getIndexName();
         $taskId = $this->taskService->getTaskId($storeId, $indexName);
-        $response = $this->normalizePushResponse($client->pushTask($taskId, $payload));
+        $response = $client->pushTask($taskId, $payload);
         $this->logger->info(
             'Ingestion pushTask response',
             array_merge([
@@ -147,29 +145,6 @@ class IngestionSendStrategy implements SendStrategyInterface
             ], $response)
         );
         return $response;
-    }
-
-    /**
-     * @param array<string, mixed>|object $response
-     * @return array{runID: string|null, eventID: string|null, message: string|null, createdAt: string|null}
-     */
-    protected function normalizePushResponse($response): array
-    {
-        if (is_array($response)) {
-            return [
-                'runID'     => $response['runID'] ?? null,
-                'eventID'   => $response['eventID'] ?? null,
-                'message'   => $response['message'] ?? null,
-                'createdAt' => $response['createdAt'] ?? null,
-            ];
-        }
-
-        return [
-            'runID'     => $response->getRunID(),
-            'eventID'   => $response->getEventID(),
-            'message'   => $response->getMessage(),
-            'createdAt' => $response->getCreatedAt(),
-        ];
     }
 
     protected function handleError(\Throwable $e, IndexOptionsInterface $indexOptions, array $requests): array
