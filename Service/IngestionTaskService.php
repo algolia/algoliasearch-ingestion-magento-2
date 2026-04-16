@@ -159,20 +159,23 @@ class IngestionTaskService implements IngestionTaskServiceInterface
                     continue;
                 }
 
-                $tasksResponse = $client->listTasks(null, null, null, null, null, ['push'], [$destination['destinationID']]);
+                $tasksResponse = $client->listTasks(
+                    itemsPerPage: null,
+                    page: null,
+                    action: null,
+                    enabled: null,
+                    sourceID: null,
+                    sourceType: ['push'],
+                    destinationID: [$destination['destinationID']]
+                );
                 $tasks = $tasksResponse['tasks'] ?? [];
 
                 if (!empty($tasks)) {
-                    $task = $tasks[0];
-                    $this->persistTask($storeId, $indexName, $task['taskID'], $task['sourceID'], $task['destinationID']);
-                    return $task['taskID'];
+                    return $this->persistDiscoveredTask($client, $storeId, $indexName, $tasks[0]);
                 }
 
                 // Destination exists but has no push task - create source + task only
-                $sourceId = $this->getSource($client, $storeId);
-                $taskId = $this->createTask($client, $sourceId, $destination['destinationID']);
-                $this->persistTask($storeId, $indexName, $taskId, $sourceId, $destination['destinationID']);
-                return $taskId;
+                return $this->createTaskForExistingDestination($client, $storeId, $indexName, $destination);
             }
 
             $page++;
@@ -317,6 +320,32 @@ class IngestionTaskService implements IngestionTaskServiceInterface
     }
 
     /**
+     * Create a source and task against an existing destination (reusing any merchant transformations attached to it),
+     * persist the record, and return the new task UUID.
+     *
+     * @throws AlreadyExistsException
+     * @throws AlgoliaException
+     */
+    protected function createTaskForExistingDestination(
+        IngestionClient $client,
+        int $storeId,
+        string $indexName,
+        array $destination
+    ): string {
+        $sourceId = $this->getSource($client, $storeId);
+        $taskId = $this->createTask($client, $sourceId, $destination['destinationID']);
+        $this->persistTask(
+            $storeId,
+            $indexName,
+            $taskId,
+            $sourceId,
+            $destination['destinationID'],
+            $destination['authenticationID']
+        );
+        return $taskId;
+    }
+
+    /**
      * @throws AlreadyExistsException
      */
     protected function persistTask(
@@ -337,5 +366,32 @@ class IngestionTaskService implements IngestionTaskServiceInterface
             'authentication_id' => $authenticationId,
         ]);
         $this->taskResource->save($task);
+    }
+
+    /**
+     * Fetch the destination for the given task, extract its authenticationID, persist the task record, and
+     * return the task UUID. Requires a separate GET request because listTasks does not return destination details.
+     *
+     * @throws AlreadyExistsException
+     * @throws AlgoliaException
+     */
+    protected function persistDiscoveredTask(
+        IngestionClient $client,
+        int $storeId,
+        string $indexName,
+        array $task
+    ): string {
+        $destination = $client->getDestination($task['destinationID']);
+        $authenticationId = $destination['authenticationID'] ?? null;
+
+        $this->persistTask(
+            $storeId,
+            $indexName,
+            $task['taskID'],
+            $task['sourceID'],
+            $task['destinationID'],
+            $authenticationId
+        );
+        return $task['taskID'];
     }
 }
