@@ -3,6 +3,7 @@
 namespace Algolia\Ingestion\Service;
 
 use Algolia\AlgoliaSearch\Api\IngestionClient;
+use Algolia\AlgoliaSearch\Api\LoggerInterface;
 use Algolia\AlgoliaSearch\Exceptions\AlgoliaException;
 use Algolia\AlgoliaSearch\Exceptions\NotFoundException;
 use Algolia\AlgoliaSearch\Helper\ConfigHelper;
@@ -24,11 +25,12 @@ class IngestionTaskService implements IngestionTaskServiceInterface
 
     public function __construct(
         protected IngestionClientProviderInterface $clientProvider,
-        protected IngestionConfigHelper $configHelper,
-        protected ConfigHelper $algoliaConfigHelper,
-        protected IngestionTaskFactory $taskFactory,
-        protected IngestionTaskResource $taskResource,
-        protected CollectionFactory $collectionFactory
+        protected IngestionConfigHelper            $configHelper,
+        protected ConfigHelper                     $algoliaConfigHelper,
+        protected IngestionTaskFactory             $taskFactory,
+        protected IngestionTaskResource            $taskResource,
+        protected CollectionFactory                $collectionFactory,
+        protected LoggerInterface                  $logger
     ) {}
 
     /**
@@ -52,6 +54,10 @@ class IngestionTaskService implements IngestionTaskServiceInterface
                 $this->storeInCache($storeId, $indexName, $taskId);
                 return $taskId;
             }
+            $this->logger->info('Cached task ID {taskId} not found via API for {indexName}, deleting local record', [
+                'taskId'    => $taskId,
+                'indexName' => $indexName,
+            ]);
             $this->taskResource->delete($dbTask);
         }
 
@@ -157,9 +163,9 @@ class IngestionTaskService implements IngestionTaskServiceInterface
                 [$tasks] = $this->extractListResponse($tasksResponse, 'tasks');
 
                 if (!empty($tasks)) {
-                    $taskId = $this->normalizeTask($tasks[0])['taskID'];
-                    $this->persistTask($storeId, $indexName, $taskId, null, null);
-                    return $taskId;
+                    $task = $this->normalizeTask($tasks[0]);
+                    $this->persistTask($storeId, $indexName, $task['taskID'], $task['sourceID'], $task['destinationID']);
+                    return $task['taskID'];
                 }
 
                 // Destination exists but has no push task - create source + task only
@@ -349,10 +355,18 @@ class IngestionTaskService implements IngestionTaskServiceInterface
     protected function normalizeTask($task): array
     {
         if (is_array($task)) {
-            return ['taskID' => $task['taskID'] ?? null];
+            return [
+                'taskID'           => $task['taskID'] ?? null,
+                'sourceID'         => $task['sourceID'] ?? null,
+                'destinationID'    => $task['destinationID'] ?? null,
+            ];
         }
 
-        return ['taskID' => $task->getTaskID()];
+        return [
+            'taskID' => $task->getTaskID(),
+            'sourceID' => $task->getSourceID(),
+            'destinationID' => $task->getDestinationID(),
+        ];
     }
 
     protected function normalizeAuthentication($authentication): array
