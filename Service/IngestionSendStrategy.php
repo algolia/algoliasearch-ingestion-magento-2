@@ -73,15 +73,12 @@ class IngestionSendStrategy implements SendStrategyInterface
                 throw $e; // Unexpected error - rethrow
             }
 
-            $storeId = $indexOptions->getStoreId();
-            $indexName = $indexOptions->getIndexName();
-
             $this->logger->warning('Ingestion pushTask 404 - invalidating stale task', [
-                'storeId' => $storeId,
-                'indexName' => $indexName,
+                'storeId' => $indexOptions->getStoreId(),
+                'indexName' => $indexOptions->getIndexName(),
             ]);
 
-            $this->taskService->invalidate($storeId, $indexName);
+            $this->taskService->invalidate($indexOptions);
             return $this->pushToProductionIndex($client, $indexOptions, ['action' => $action, 'records' => $records]);
         }
     }
@@ -158,16 +155,14 @@ class IngestionSendStrategy implements SendStrategyInterface
         IndexOptionsInterface $indexOptions,
         array $payload
     ): array {
-        $storeId = $indexOptions->getStoreId();
-        $indexName = $indexOptions->getIndexName();
-        $taskId = $this->taskService->getTaskId($storeId, $indexName);
+        $taskId = $this->taskService->getTaskId($indexOptions);
         $response = $client->pushTask($taskId, $payload);
         $this->logger->info(
             'Ingestion pushTask response',
             array_merge([
                 'taskId'    => $taskId,
-                'storeId'   => $storeId,
-                'indexName' => $indexName,
+                'storeId'   => $indexOptions->getStoreId(),
+                'indexName' => $indexOptions->getIndexName(),
                 'action'    => $payload['action']
             ], $response)
         );
