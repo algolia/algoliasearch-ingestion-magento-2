@@ -139,7 +139,7 @@ class IngestionSendStrategy implements SendStrategyInterface
         return $response;
     }
 
-    private function logPushResponse(
+    protected function logPushResponse(
         string $message,
         IndexOptionsInterface $indexOptions,
         array $payload,
