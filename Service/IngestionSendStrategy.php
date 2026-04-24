@@ -46,6 +46,15 @@ class IngestionSendStrategy implements SendStrategyInterface
     }
 
     /**
+     * Actions can include:
+     * - addObject
+     * - updateObject
+     * - partialUpdateObject
+     * - partialUpdateObjectNoCreate
+     * - deleteObject
+     * - delete
+     *  
+     * @see https://www.algolia.com/doc/rest-api/ingestion/push-task#body-action
      * @return array<string, array<int, mixed>>
      */
     protected function groupRequestsByAction(array $requests): array
