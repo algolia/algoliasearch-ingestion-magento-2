@@ -73,15 +73,12 @@ class IngestionSendStrategy implements SendStrategyInterface
                 throw $e; // Unexpected error - rethrow
             }
 
-            $storeId = $indexOptions->getStoreId();
-            $indexName = $indexOptions->getIndexName();
-
             $this->logger->warning('Ingestion pushTask 404 - invalidating stale task', [
-                'storeId' => $storeId,
-                'indexName' => $indexName,
+                'storeId' => $indexOptions->getStoreId(),
+                'indexName' => $indexOptions->getIndexName(),
             ]);
 
-            $this->taskService->invalidate($storeId, $indexName);
+            $this->taskService->invalidate($indexOptions);
             return $this->pushToProductionIndex($client, $indexOptions, ['action' => $action, 'records' => $records]);
         }
     }
@@ -107,7 +104,6 @@ class IngestionSendStrategy implements SendStrategyInterface
         array $payload
     ): array {
         $tempIndexName = $indexOptions->getIndexName();
-        $storeId = $indexOptions->getStoreId();
         $productionIndexName = $this->indexNameFetcher->getOriginalIndexName($tempIndexName);
         $response = $client->push(
             $tempIndexName,
@@ -115,14 +111,7 @@ class IngestionSendStrategy implements SendStrategyInterface
             true, // move index operations require that this be a synchronous call
             $productionIndexName
         );
-        $this->logger->info(
-            'Ingestion push response',
-            array_merge([
-                'storeId'   => $storeId,
-                'indexName' => $tempIndexName,
-                'action'    => $payload['action']
-            ], $response)
-        );
+        $this->logPushResponse('Ingestion push response', $indexOptions, $payload, $response);
         return $response;
     }
 
@@ -134,22 +123,8 @@ class IngestionSendStrategy implements SendStrategyInterface
         IndexOptionsInterface $indexOptions,
         array $payload
     ): array {
-        $indexName = $indexOptions->getIndexName();
-        $storeId = $indexOptions->getStoreId();
-
-        $response = $client->push(
-            $indexName,
-            $payload
-        );
-
-        $this->logger->info(
-            'Ingestion push response (no task)',
-            array_merge([
-                'storeId'   => $storeId,
-                'indexName' => $indexName,
-                'action'    => $payload['action']
-            ], $response)
-        );
+        $response = $client->push($indexOptions->getIndexName(), $payload);
+        $this->logPushResponse('Ingestion push response (no task)', $indexOptions, $payload, $response);
         return $response;
     }
 
@@ -158,20 +133,28 @@ class IngestionSendStrategy implements SendStrategyInterface
         IndexOptionsInterface $indexOptions,
         array $payload
     ): array {
-        $storeId = $indexOptions->getStoreId();
-        $indexName = $indexOptions->getIndexName();
-        $taskId = $this->taskService->getTaskId($storeId, $indexName);
+        $taskId = $this->taskService->getTaskId($indexOptions);
         $response = $client->pushTask($taskId, $payload);
-        $this->logger->info(
-            'Ingestion pushTask response',
-            array_merge([
-                'taskId'    => $taskId,
-                'storeId'   => $storeId,
-                'indexName' => $indexName,
-                'action'    => $payload['action']
-            ], $response)
-        );
+        $this->logPushResponse('Ingestion pushTask response', $indexOptions, $payload, $response, $taskId);
         return $response;
+    }
+
+    protected function logPushResponse(
+        string $message,
+        IndexOptionsInterface $indexOptions,
+        array $payload,
+        array $response,
+        ?string $taskId = null
+    ): void {
+        $context = [
+            'storeId'   => $indexOptions->getStoreId(),
+            'indexName' => $indexOptions->getIndexName(),
+            'action'    => $payload['action'],
+        ];
+        if ($taskId !== null) {
+            $context = ['taskId' => $taskId] + $context;
+        }
+        $this->logger->info($message, array_merge($context, $response));
     }
 
     protected function handleError(\Throwable $e, IndexOptionsInterface $indexOptions, array $requests): array

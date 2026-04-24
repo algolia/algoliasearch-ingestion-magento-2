@@ -2,6 +2,7 @@
 
 namespace Algolia\Ingestion\Service;
 
+use Algolia\AlgoliaSearch\Api\Data\IndexOptionsInterface;
 use Algolia\AlgoliaSearch\Api\IngestionClient;
 use Algolia\AlgoliaSearch\Api\LoggerInterface;
 use Algolia\AlgoliaSearch\Exceptions\AlgoliaException;
@@ -38,8 +39,10 @@ class IngestionTaskService implements IngestionTaskServiceInterface
      * @throws AlgoliaException
      * @throws \Exception
      */
-    public function getTaskId(int $storeId, string $indexName): string
+    public function getTaskId(IndexOptionsInterface $indexOptions): string
     {
+        $storeId = $indexOptions->getStoreId();
+        $indexName = $indexOptions->getIndexName();
         $cached = $this->loadFromCache($storeId, $indexName);
         if ($cached !== null) {
             return $cached;
@@ -71,8 +74,10 @@ class IngestionTaskService implements IngestionTaskServiceInterface
     /**
      * @throws \Exception
      */
-    public function invalidate(int $storeId, string $indexName): void
+    public function invalidate(IndexOptionsInterface $indexOptions): void
     {
+        $storeId = $indexOptions->getStoreId();
+        $indexName = $indexOptions->getIndexName();
         unset($this->cache[$storeId][$indexName]);
 
         $dbTask = $this->loadFromDatabase($storeId, $indexName);

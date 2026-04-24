@@ -77,7 +77,7 @@ class IngestionSendStrategyTest extends TestCase
     {
         $indexOptions = $this->mockIndexOptions(self::INDEX_NAME, false);
         $this->taskService->method('getTaskId')
-            ->with(self::STORE_ID, self::INDEX_NAME)
+            ->with($indexOptions)
             ->willReturn(self::TASK_ID);
 
         $expectedPayload = ['action' => 'addObject', 'records' => [['objectID' => '1']]];
@@ -278,7 +278,7 @@ class IngestionSendStrategyTest extends TestCase
 
         $this->taskService->expects($this->once())
             ->method('invalidate')
-            ->with(self::STORE_ID, self::INDEX_NAME);
+            ->with($indexOptions);
 
         $this->ingestionClient->expects($this->exactly(2))
             ->method('pushTask')

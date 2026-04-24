@@ -2,6 +2,7 @@
 
 namespace Algolia\Ingestion\Test\Unit\Service;
 
+use Algolia\AlgoliaSearch\Api\Data\IndexOptionsInterface;
 use Algolia\AlgoliaSearch\Api\IngestionClient;
 use Algolia\AlgoliaSearch\Api\LoggerInterface;
 use Algolia\AlgoliaSearch\Exceptions\NotFoundException;
@@ -89,7 +90,7 @@ class IngestionTaskServiceTest extends TestCase
         $this->ingestionClient->expects($this->never())->method('listDestinations');
         $this->ingestionClient->expects($this->never())->method('getTask');
 
-        $result = $this->service->getTaskId(self::STORE_ID, self::INDEX_NAME);
+        $result = $this->service->getTaskId($this->mockIndexOptions());
 
         $this->assertSame(self::TASK_ID, $result);
     }
@@ -104,13 +105,13 @@ class IngestionTaskServiceTest extends TestCase
             ->method('createTask')
             ->willReturn(['taskID' => self::TASK_ID]);
 
-        $this->service->getTaskId(self::STORE_ID, self::INDEX_NAME);
+        $this->service->getTaskId($this->mockIndexOptions());
 
         // Second call must not hit API again
         $this->ingestionClient->expects($this->never())->method('listDestinations');
         $this->ingestionClient->expects($this->never())->method('createSource');
 
-        $second = $this->service->getTaskId(self::STORE_ID, self::INDEX_NAME);
+        $second = $this->service->getTaskId($this->mockIndexOptions());
 
         $this->assertSame(self::TASK_ID, $second);
     }
@@ -125,7 +126,7 @@ class IngestionTaskServiceTest extends TestCase
         $this->ingestionClient->method('getTask')->willReturn([]);
         $this->ingestionClient->expects($this->never())->method('listDestinations');
 
-        $result = $this->service->getTaskId(self::STORE_ID, self::INDEX_NAME);
+        $result = $this->service->getTaskId($this->mockIndexOptions());
 
         $this->assertSame(self::TASK_ID, $result);
     }
@@ -136,7 +137,7 @@ class IngestionTaskServiceTest extends TestCase
         $this->setupCollectionReturning($taskModel);
         $this->ingestionClient->method('getTask')->willReturn([]);
 
-        $this->service->getTaskId(self::STORE_ID, self::INDEX_NAME);
+        $this->service->getTaskId($this->mockIndexOptions());
 
         $cache = $this->getPrivateProperty($this->service, 'cache');
         $this->assertSame(self::TASK_ID, $cache[self::STORE_ID][self::INDEX_NAME] ?? null);
@@ -153,7 +154,7 @@ class IngestionTaskServiceTest extends TestCase
             ->method('getTask')
             ->with(self::TASK_ID);
 
-        $this->service->getTaskId(self::STORE_ID, self::INDEX_NAME);
+        $this->service->getTaskId($this->mockIndexOptions());
     }
 
     public function testGetTaskIdRecoversFromStaleDbRecordOnNotFoundException(): void
@@ -169,7 +170,7 @@ class IngestionTaskServiceTest extends TestCase
         $this->ingestionClient->method('createTask')
             ->willReturn(['taskID' => self::TASK_ID]);
 
-        $result = $this->service->getTaskId(self::STORE_ID, self::INDEX_NAME);
+        $result = $this->service->getTaskId($this->mockIndexOptions());
 
         $this->assertSame(self::TASK_ID, $result);
         $this->assertNotSame('stale-task-id', $result);
@@ -197,7 +198,7 @@ class IngestionTaskServiceTest extends TestCase
         $this->ingestionClient->expects($this->never())->method('createDestination');
         $this->ingestionClient->expects($this->never())->method('createTask');
 
-        $result = $this->service->getTaskId(self::STORE_ID, self::INDEX_NAME);
+        $result = $this->service->getTaskId($this->mockIndexOptions());
 
         $this->assertSame(self::TASK_ID, $result);
     }
@@ -226,7 +227,7 @@ class IngestionTaskServiceTest extends TestCase
         $this->ingestionClient->method('getDestination')
             ->willReturn(['authenticationID' => self::AUTHENTICATION_ID]);
 
-        $result = $this->service->getTaskId(self::STORE_ID, self::INDEX_NAME);
+        $result = $this->service->getTaskId($this->mockIndexOptions());
 
         $this->assertSame(self::TASK_ID, $result);
     }
@@ -258,7 +259,7 @@ class IngestionTaskServiceTest extends TestCase
             ->method('createTask')
             ->willReturn(['taskID' => self::TASK_ID]);
 
-        $result = $this->service->getTaskId(self::STORE_ID, self::INDEX_NAME);
+        $result = $this->service->getTaskId($this->mockIndexOptions());
 
         $this->assertSame(self::TASK_ID, $result);
     }
@@ -288,7 +289,7 @@ class IngestionTaskServiceTest extends TestCase
         $this->ingestionClient->method('createTask')
             ->willReturn(['taskID' => self::TASK_ID]);
 
-        $result = $this->service->getTaskId(self::STORE_ID, self::INDEX_NAME);
+        $result = $this->service->getTaskId($this->mockIndexOptions());
 
         $this->assertSame(self::TASK_ID, $result);
     }
@@ -308,7 +309,7 @@ class IngestionTaskServiceTest extends TestCase
             ->method('save')
             ->with($newTaskModel);
 
-        $this->service->getTaskId(self::STORE_ID, self::INDEX_NAME);
+        $this->service->getTaskId($this->mockIndexOptions());
     }
 
     // --- Invalidation ---
@@ -323,7 +324,7 @@ class IngestionTaskServiceTest extends TestCase
             ],
         ]);
 
-        $this->service->invalidate(self::STORE_ID, self::INDEX_NAME);
+        $this->service->invalidate($this->mockIndexOptions());
 
         $cache = $this->getPrivateProperty($this->service, 'cache');
         $this->assertArrayNotHasKey(self::INDEX_NAME, $cache[self::STORE_ID] ?? []);
@@ -350,6 +351,16 @@ class IngestionTaskServiceTest extends TestCase
     }
 
     // --- Helpers ---
+
+    private function mockIndexOptions(
+        int $storeId = self::STORE_ID,
+        string $indexName = self::INDEX_NAME
+    ): IndexOptionsInterface&MockObject {
+        $mock = $this->createMock(IndexOptionsInterface::class);
+        $mock->method('getStoreId')->willReturn($storeId);
+        $mock->method('getIndexName')->willReturn($indexName);
+        return $mock;
+    }
 
     private function setupEmptyCollection(): void
     {
