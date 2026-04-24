@@ -3,7 +3,6 @@
 namespace Algolia\Ingestion\Service;
 
 use Algolia\AlgoliaSearch\Api\Data\IndexOptionsInterface;
-use Algolia\AlgoliaSearch\Api\IngestionClient;
 use Algolia\AlgoliaSearch\Api\LoggerInterface;
 use Algolia\AlgoliaSearch\Api\SendStrategyInterface;
 use Algolia\AlgoliaSearch\Exceptions\BadRequestException;
@@ -33,12 +32,11 @@ class IngestionSendStrategy implements SendStrategyInterface
     public function send(IndexOptionsInterface $indexOptions, array $requests): array
     {
         try {
-            $client = $this->clientProvider->getClient($indexOptions->getStoreId());
             $groups = $this->groupRequestsByAction($requests);
             $lastResponse = [];
 
             foreach ($groups as $action => $records) {
-                $lastResponse = $this->pushActionGroupWithRetry($client, $indexOptions, $action, $records);
+                $lastResponse = $this->pushActionGroupWithRetry($indexOptions, $action, $records);
             }
 
             return $lastResponse;
@@ -61,13 +59,12 @@ class IngestionSendStrategy implements SendStrategyInterface
     }
 
     protected function pushActionGroupWithRetry(
-        IngestionClient $client,
         IndexOptionsInterface $indexOptions,
         string $action,
         array $records
     ): array {
         try {
-            return $this->pushActionGroup($client, $indexOptions, $action, $records);
+            return $this->pushActionGroup($indexOptions, $action, $records);
         } catch (NotFoundException $e) {
             if ($indexOptions->isTemporaryIndex()) {
                 throw $e; // Unexpected error - rethrow
@@ -79,12 +76,11 @@ class IngestionSendStrategy implements SendStrategyInterface
             ]);
 
             $this->taskService->invalidate($indexOptions);
-            return $this->pushToProductionIndex($client, $indexOptions, ['action' => $action, 'records' => $records]);
+            return $this->pushToProductionIndex($indexOptions, ['action' => $action, 'records' => $records]);
         }
     }
 
     protected function pushActionGroup(
-        IngestionClient $client,
         IndexOptionsInterface $indexOptions,
         string $action,
         array $records
@@ -92,17 +88,17 @@ class IngestionSendStrategy implements SendStrategyInterface
         $payload = ['action' => $action, 'records' => $records];
 
         if ($indexOptions->isTemporaryIndex()) {
-            return $this->pushToTemporaryIndex($client, $indexOptions, $payload);
+            return $this->pushToTemporaryIndex($indexOptions, $payload);
         }
 
-        return $this->pushToProductionIndex($client, $indexOptions, $payload);
+        return $this->pushToProductionIndex($indexOptions, $payload);
     }
 
     protected function pushToTemporaryIndex(
-        IngestionClient $client,
         IndexOptionsInterface $indexOptions,
         array $payload
     ): array {
+        $client = $this->clientProvider->getClient($indexOptions->getStoreId());
         $tempIndexName = $indexOptions->getIndexName();
         $productionIndexName = $this->indexNameFetcher->getOriginalIndexName($tempIndexName);
         $response = $client->push(
@@ -119,20 +115,20 @@ class IngestionSendStrategy implements SendStrategyInterface
      * @internal Experimental method - DO NOT USE
      */
     protected function pushToProductionIndexWithoutTask(
-        IngestionClient $client,
         IndexOptionsInterface $indexOptions,
         array $payload
     ): array {
+        $client = $this->clientProvider->getClient($indexOptions->getStoreId());
         $response = $client->push($indexOptions->getIndexName(), $payload);
         $this->logPushResponse('Ingestion push response (no task)', $indexOptions, $payload, $response);
         return $response;
     }
 
     protected function pushToProductionIndex(
-        IngestionClient $client,
         IndexOptionsInterface $indexOptions,
         array $payload
     ): array {
+        $client = $this->clientProvider->getClient($indexOptions->getStoreId());
         $taskId = $this->taskService->getTaskId($indexOptions);
         $response = $client->pushTask($taskId, $payload);
         $this->logPushResponse('Ingestion pushTask response', $indexOptions, $payload, $response, $taskId);
