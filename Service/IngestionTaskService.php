@@ -2,9 +2,12 @@
 
 namespace Algolia\Ingestion\Service;
 
+use Algolia\AlgoliaSearch\Api\Data\IndexOptionsInterface;
 use Algolia\AlgoliaSearch\Api\IngestionClient;
+use Algolia\AlgoliaSearch\Api\LoggerInterface;
 use Algolia\AlgoliaSearch\Exceptions\AlgoliaException;
 use Algolia\AlgoliaSearch\Exceptions\NotFoundException;
+use Algolia\AlgoliaSearch\Helper\ConfigHelper;
 use Algolia\Ingestion\Api\IngestionClientProviderInterface;
 use Algolia\Ingestion\Api\IngestionTaskServiceInterface;
 use Algolia\Ingestion\Helper\IngestionConfigHelper;
@@ -23,10 +26,12 @@ class IngestionTaskService implements IngestionTaskServiceInterface
 
     public function __construct(
         protected IngestionClientProviderInterface $clientProvider,
-        protected IngestionConfigHelper $configHelper,
-        protected IngestionTaskFactory $taskFactory,
-        protected IngestionTaskResource $taskResource,
-        protected CollectionFactory $collectionFactory
+        protected IngestionConfigHelper            $configHelper,
+        protected ConfigHelper                     $algoliaConfigHelper,
+        protected IngestionTaskFactory             $taskFactory,
+        protected IngestionTaskResource            $taskResource,
+        protected CollectionFactory                $collectionFactory,
+        protected LoggerInterface                  $logger
     ) {}
 
     /**
@@ -34,8 +39,10 @@ class IngestionTaskService implements IngestionTaskServiceInterface
      * @throws AlgoliaException
      * @throws \Exception
      */
-    public function getTaskId(int $storeId, string $indexName): string
+    public function getTaskId(IndexOptionsInterface $indexOptions): string
     {
+        $storeId = $indexOptions->getStoreId();
+        $indexName = $indexOptions->getIndexName();
         $cached = $this->loadFromCache($storeId, $indexName);
         if ($cached !== null) {
             return $cached;
@@ -50,6 +57,10 @@ class IngestionTaskService implements IngestionTaskServiceInterface
                 $this->storeInCache($storeId, $indexName, $taskId);
                 return $taskId;
             }
+            $this->logger->info('Cached task ID {taskId} not found via API for {indexName}, deleting local record', [
+                'taskId'    => $taskId,
+                'indexName' => $indexName,
+            ]);
             $this->taskResource->delete($dbTask);
         }
 
@@ -63,8 +74,10 @@ class IngestionTaskService implements IngestionTaskServiceInterface
     /**
      * @throws \Exception
      */
-    public function invalidate(int $storeId, string $indexName): void
+    public function invalidate(IndexOptionsInterface $indexOptions): void
     {
+        $storeId = $indexOptions->getStoreId();
+        $indexName = $indexOptions->getIndexName();
         unset($this->cache[$storeId][$indexName]);
 
         $dbTask = $this->loadFromDatabase($storeId, $indexName);
@@ -140,31 +153,34 @@ class IngestionTaskService implements IngestionTaskServiceInterface
 
         do {
             $response = $client->listDestinations(self::DESTINATIONS_PAGE_SIZE, $page, ['search']);
-            $nbPages = $response->getPagination()->getNbPages();
+            $destinations = $response['destinations'] ?? [];
+            $nbPages = $response['pagination']['nbPages'] ?? 1;
 
-            foreach ($response->getDestinations() as $destination) {
-                if ($destination->getOwner() !== null) {
+            foreach ($destinations as $destination) {
+                if ($this->isInternal($destination)) {
                     continue;
                 }
-                if ($destination->getInput()->getIndexName() !== $indexName) {
+                if (($destination['input']['indexName'] ?? null) !== $indexName) {
                     continue;
                 }
 
-                $destId = $destination->getDestinationID();
-                $tasksResponse = $client->listTasks(null, null, null, null, null, ['push'], [$destId]);
-                $tasks = $tasksResponse->getTasks();
+                $tasksResponse = $client->listTasks(
+                    itemsPerPage: null,
+                    page: null,
+                    action: null,
+                    enabled: null,
+                    sourceID: null,
+                    sourceType: ['push'],
+                    destinationID: [$destination['destinationID']]
+                );
+                $tasks = $tasksResponse['tasks'] ?? [];
 
                 if (!empty($tasks)) {
-                    $taskId = $tasks[0]->getTaskID();
-                    $this->persistTask($storeId, $indexName, $taskId, null, null);
-                    return $taskId;
+                    return $this->persistDiscoveredTask($client, $storeId, $indexName, $tasks[0]);
                 }
 
                 // Destination exists but has no push task - create source + task only
-                $sourceId = $this->createSource($client, $storeId);
-                $taskId = $this->createTask($client, $sourceId, $destId);
-                $this->persistTask($storeId, $indexName, $taskId, $sourceId, $destId);
-                return $taskId;
+                return $this->createTaskForExistingDestination($client, $storeId, $indexName, $destination);
             }
 
             $page++;
@@ -173,35 +189,130 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         return null;
     }
 
+    /** Internal tasks and destinations are managed by the Ingestion API and not by the extension. */
+    protected function isInternal(array $record): bool
+    {
+        return !empty($record['owner']);
+    }
+
     /**
-     * Create a full push pipeline (source + destination + task) for the
+     * Create a full push pipeline (source + authentication + destination + task) for the
      * given store and index. Returns the new task UUID.
      * @throws AlreadyExistsException
      */
     protected function createFullPipeline(IngestionClient $client, int $storeId, string $indexName): string
     {
-        $sourceId = $this->createSource($client, $storeId);
+        $sourceId = $this->getSource($client, $storeId);
+        $authId   = $this->getAuthentication($client, $storeId);
 
         $destResponse = $client->createDestination([
-            'type' => 'search',
-            'name' => 'magento-' . $storeId . '-' . $indexName,
-            'input' => ['indexName' => $indexName],
-            'transformationIDs' => [],
+            'type'             => 'search',
+            'name'             => $this->getDestinationName($storeId, $indexName),
+            'input'            => ['indexName' => $indexName],
+            'authenticationID' => $authId,
         ]);
-        $destId = $destResponse->getDestinationID();
+        $destId = $destResponse['destinationID'];
 
         $taskId = $this->createTask($client, $sourceId, $destId);
-        $this->persistTask($storeId, $indexName, $taskId, $sourceId, $destId);
+        $this->persistTask($storeId, $indexName, $taskId, $sourceId, $destId, $authId);
         return $taskId;
     }
 
-    protected function createSource(IngestionClient $client, int $storeId): string
+    protected function getTaskPipelineName(int $storeId): string
     {
+        return 'Magento (Store ' . $storeId . ')';
+    }
+
+    protected function getDestinationName(int $storeId, string $indexName): string
+    {
+        return $this->getTaskPipelineName($storeId, $indexName) . ' - ' . $indexName;
+    }
+
+    protected function getAuthentication(IngestionClient $client, int $storeId): string
+    {
+        $existingId = $this->findExistingAuthentication($client, $storeId);
+        if ($existingId !== null) {
+            return $existingId;
+        }
+
+        $response = $client->createAuthentication([
+            'type'  => 'algolia',
+            'name'  => $this->getAuthenticationName($storeId),
+            'input' => [
+                'appID'  => $this->algoliaConfigHelper->getApplicationID($storeId),
+                'apiKey' => $this->algoliaConfigHelper->getAPIKey($storeId),
+            ],
+        ]);
+
+        return $response['authenticationID'];
+    }
+
+    protected function findExistingAuthentication(IngestionClient $client, int $storeId): ?string
+    {
+        $authName = $this->getAuthenticationName($storeId);
+        $page = 1;
+
+        do {
+            $response = $client->listAuthentications(self::DESTINATIONS_PAGE_SIZE, $page, ['algolia']);
+            $authentications = $response['authentications'] ?? [];
+            $nbPages = $response['pagination']['nbPages'] ?? 1;
+
+            foreach ($authentications as $authentication) {
+                if ($authentication['name'] === $authName) {
+                    return $authentication['authenticationID'];
+                }
+            }
+
+            $page++;
+        } while ($page <= $nbPages);
+
+        return null;
+    }
+
+    protected function getAuthenticationName(int $storeId): string
+    {
+        return $this->getTaskPipelineName($storeId);
+    }
+
+    protected function getSource(IngestionClient $client, int $storeId): string
+    {
+        $existingId = $this->findExistingSource($client, $storeId);
+        if ($existingId !== null) {
+            return $existingId;
+        }
+
         $response = $client->createSource([
             'type' => 'push',
-            'name' => 'magento-' . $storeId,
+            'name' => $this->getSourceName($storeId),
         ]);
-        return $response->getSourceID();
+        return $response['sourceID'];
+    }
+
+    protected function findExistingSource(IngestionClient $client, int $storeId): ?string
+    {
+        $sourceName = $this->getSourceName($storeId);
+        $page = 1;
+
+        do {
+            $response = $client->listSources(self::DESTINATIONS_PAGE_SIZE, $page, ['push']);
+            $sources = $response['sources'] ?? [];
+            $nbPages = $response['pagination']['nbPages'] ?? 1;
+
+            foreach ($sources as $source) {
+                if ($source['name'] === $sourceName) {
+                    return $source['sourceID'];
+                }
+            }
+
+            $page++;
+        } while ($page <= $nbPages);
+
+        return null;
+    }
+
+    protected function getSourceName(int $storeId): string
+    {
+        return $this->getTaskPipelineName($storeId);
     }
 
     protected function createTask(IngestionClient $client, string $sourceId, string $destId): string
@@ -215,7 +326,33 @@ class IngestionTaskService implements IngestionTaskServiceInterface
             'destinationID' => $destId,
             'action' => 'save',
         ]);
-        return $response->getTaskID();
+        return $response['taskID'];
+    }
+
+    /**
+     * Create a source and task against an existing destination (reusing any merchant transformations attached to it),
+     * persist the record, and return the new task UUID.
+     *
+     * @throws AlreadyExistsException
+     * @throws AlgoliaException
+     */
+    protected function createTaskForExistingDestination(
+        IngestionClient $client,
+        int $storeId,
+        string $indexName,
+        array $destination
+    ): string {
+        $sourceId = $this->getSource($client, $storeId);
+        $taskId = $this->createTask($client, $sourceId, $destination['destinationID']);
+        $this->persistTask(
+            $storeId,
+            $indexName,
+            $taskId,
+            $sourceId,
+            $destination['destinationID'],
+            $destination['authenticationID']
+        );
+        return $taskId;
     }
 
     /**
@@ -226,16 +363,45 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         string $indexName,
         string $taskId,
         ?string $sourceId,
-        ?string $destinationId
+        ?string $destinationId,
+        ?string $authenticationId = null
     ): void {
         $task = $this->taskFactory->create();
         $task->setData([
-            'store_id' => $storeId,
-            'index_name' => $indexName,
-            'task_id' => $taskId,
-            'source_id' => $sourceId,
-            'destination_id' => $destinationId,
+            'store_id'          => $storeId,
+            'index_name'        => $indexName,
+            'task_id'           => $taskId,
+            'source_id'         => $sourceId,
+            'destination_id'    => $destinationId,
+            'authentication_id' => $authenticationId,
         ]);
         $this->taskResource->save($task);
+    }
+
+    /**
+     * Fetch the destination for the given task, extract its authenticationID, persist the task record, and
+     * return the task UUID. Requires a separate GET request because listTasks does not return destination details.
+     *
+     * @throws AlreadyExistsException
+     * @throws AlgoliaException
+     */
+    protected function persistDiscoveredTask(
+        IngestionClient $client,
+        int $storeId,
+        string $indexName,
+        array $task
+    ): string {
+        $destination = $client->getDestination($task['destinationID']);
+        $authenticationId = $destination['authenticationID'] ?? null;
+
+        $this->persistTask(
+            $storeId,
+            $indexName,
+            $task['taskID'],
+            $task['sourceID'],
+            $task['destinationID'],
+            $authenticationId
+        );
+        return $task['taskID'];
     }
 }

@@ -2,17 +2,11 @@
 
 namespace Algolia\Ingestion\Test\Unit\Service;
 
+use Algolia\AlgoliaSearch\Api\Data\IndexOptionsInterface;
 use Algolia\AlgoliaSearch\Api\IngestionClient;
+use Algolia\AlgoliaSearch\Api\LoggerInterface;
 use Algolia\AlgoliaSearch\Exceptions\NotFoundException;
-use Algolia\AlgoliaSearch\Model\Ingestion\Destination;
-use Algolia\AlgoliaSearch\Model\Ingestion\DestinationCreateResponse;
-use Algolia\AlgoliaSearch\Model\Ingestion\DestinationInput;
-use Algolia\AlgoliaSearch\Model\Ingestion\ListDestinationsResponse;
-use Algolia\AlgoliaSearch\Model\Ingestion\ListTasksResponse;
-use Algolia\AlgoliaSearch\Model\Ingestion\Pagination;
-use Algolia\AlgoliaSearch\Model\Ingestion\SourceCreateResponse;
-use Algolia\AlgoliaSearch\Model\Ingestion\Task;
-use Algolia\AlgoliaSearch\Model\Ingestion\TaskCreateResponse;
+use Algolia\AlgoliaSearch\Helper\ConfigHelper;
 use Algolia\AlgoliaSearch\Test\TestCase;
 use Algolia\Ingestion\Api\IngestionClientProviderInterface;
 use Algolia\Ingestion\Helper\IngestionConfigHelper;
@@ -31,14 +25,17 @@ class IngestionTaskServiceTest extends TestCase
     private const TASK_ID = 'task-uuid-1234';
     private const SOURCE_ID = 'source-uuid-5678';
     private const DESTINATION_ID = 'dest-uuid-9012';
+    private const AUTHENTICATION_ID = 'auth-uuid-3456';
 
     private null|(IngestionClientProviderInterface&MockObject) $clientProvider = null;
     private null|(IngestionClient&MockObject) $ingestionClient = null;
     private null|(IngestionConfigHelper&MockObject) $configHelper = null;
+    private null|(ConfigHelper&MockObject) $algoliaConfigHelper = null;
     private null|(IngestionTaskFactory&MockObject) $taskFactory = null;
     private null|(IngestionTaskResource&MockObject) $taskResource = null;
     private null|(CollectionFactory&MockObject) $collectionFactory = null;
     private null|(Collection&MockObject) $collection = null;
+    private null|(LoggerInterface&MockObject) $logger = null;
     private ?IngestionTaskService $service = null;
 
     protected function setUp(): void
@@ -49,6 +46,11 @@ class IngestionTaskServiceTest extends TestCase
         $this->clientProvider->method('getClient')->willReturn($this->ingestionClient);
 
         $this->configHelper = $this->createMock(IngestionConfigHelper::class);
+
+        $this->algoliaConfigHelper = $this->createMock(ConfigHelper::class);
+        $this->algoliaConfigHelper->method('getApplicationID')->willReturn('TEST_APP_ID');
+        $this->algoliaConfigHelper->method('getAPIKey')->willReturn('TEST_API_KEY');
+
         $this->taskFactory = $this->createMock(IngestionTaskFactory::class);
         $this->taskResource = $this->createMock(IngestionTaskResource::class);
 
@@ -61,12 +63,16 @@ class IngestionTaskServiceTest extends TestCase
 
         $this->taskFactory->method('create')->willReturn($this->createMock(IngestionTask::class));
 
+        $this->logger = $this->createMock(LoggerInterface::class);
+
         $this->service = new IngestionTaskService(
             $this->clientProvider,
             $this->configHelper,
+            $this->algoliaConfigHelper,
             $this->taskFactory,
             $this->taskResource,
-            $this->collectionFactory
+            $this->collectionFactory,
+            $this->logger
         );
     }
 
@@ -84,7 +90,7 @@ class IngestionTaskServiceTest extends TestCase
         $this->ingestionClient->expects($this->never())->method('listDestinations');
         $this->ingestionClient->expects($this->never())->method('getTask');
 
-        $result = $this->service->getTaskId(self::STORE_ID, self::INDEX_NAME);
+        $result = $this->service->getTaskId($this->mockIndexOptions());
 
         $this->assertSame(self::TASK_ID, $result);
     }
@@ -97,15 +103,15 @@ class IngestionTaskServiceTest extends TestCase
 
         $this->ingestionClient->expects($this->once())
             ->method('createTask')
-            ->willReturn($this->mockTaskCreateResponse(self::TASK_ID));
+            ->willReturn(['taskID' => self::TASK_ID]);
 
-        $this->service->getTaskId(self::STORE_ID, self::INDEX_NAME);
+        $this->service->getTaskId($this->mockIndexOptions());
 
         // Second call must not hit API again
         $this->ingestionClient->expects($this->never())->method('listDestinations');
         $this->ingestionClient->expects($this->never())->method('createSource');
 
-        $second = $this->service->getTaskId(self::STORE_ID, self::INDEX_NAME);
+        $second = $this->service->getTaskId($this->mockIndexOptions());
 
         $this->assertSame(self::TASK_ID, $second);
     }
@@ -120,7 +126,7 @@ class IngestionTaskServiceTest extends TestCase
         $this->ingestionClient->method('getTask')->willReturn([]);
         $this->ingestionClient->expects($this->never())->method('listDestinations');
 
-        $result = $this->service->getTaskId(self::STORE_ID, self::INDEX_NAME);
+        $result = $this->service->getTaskId($this->mockIndexOptions());
 
         $this->assertSame(self::TASK_ID, $result);
     }
@@ -131,7 +137,7 @@ class IngestionTaskServiceTest extends TestCase
         $this->setupCollectionReturning($taskModel);
         $this->ingestionClient->method('getTask')->willReturn([]);
 
-        $this->service->getTaskId(self::STORE_ID, self::INDEX_NAME);
+        $this->service->getTaskId($this->mockIndexOptions());
 
         $cache = $this->getPrivateProperty($this->service, 'cache');
         $this->assertSame(self::TASK_ID, $cache[self::STORE_ID][self::INDEX_NAME] ?? null);
@@ -148,7 +154,7 @@ class IngestionTaskServiceTest extends TestCase
             ->method('getTask')
             ->with(self::TASK_ID);
 
-        $this->service->getTaskId(self::STORE_ID, self::INDEX_NAME);
+        $this->service->getTaskId($this->mockIndexOptions());
     }
 
     public function testGetTaskIdRecoversFromStaleDbRecordOnNotFoundException(): void
@@ -162,9 +168,9 @@ class IngestionTaskServiceTest extends TestCase
         $this->setupEmptyDestinationList();
         $this->setupCreatePipelineMocks();
         $this->ingestionClient->method('createTask')
-            ->willReturn($this->mockTaskCreateResponse(self::TASK_ID));
+            ->willReturn(['taskID' => self::TASK_ID]);
 
-        $result = $this->service->getTaskId(self::STORE_ID, self::INDEX_NAME);
+        $result = $this->service->getTaskId($this->mockIndexOptions());
 
         $this->assertSame(self::TASK_ID, $result);
         $this->assertNotSame('stale-task-id', $result);
@@ -185,11 +191,14 @@ class IngestionTaskServiceTest extends TestCase
         $this->ingestionClient->method('listTasks')
             ->willReturn($this->mockTaskListResponseWithTask(self::TASK_ID));
 
+        $this->ingestionClient->method('getDestination')
+            ->willReturn(['authenticationID' => self::AUTHENTICATION_ID]);
+
         $this->ingestionClient->expects($this->never())->method('createSource');
         $this->ingestionClient->expects($this->never())->method('createDestination');
         $this->ingestionClient->expects($this->never())->method('createTask');
 
-        $result = $this->service->getTaskId(self::STORE_ID, self::INDEX_NAME);
+        $result = $this->service->getTaskId($this->mockIndexOptions());
 
         $this->assertSame(self::TASK_ID, $result);
     }
@@ -215,7 +224,10 @@ class IngestionTaskServiceTest extends TestCase
         $this->ingestionClient->method('listTasks')
             ->willReturn($this->mockTaskListResponseWithTask(self::TASK_ID));
 
-        $result = $this->service->getTaskId(self::STORE_ID, self::INDEX_NAME);
+        $this->ingestionClient->method('getDestination')
+            ->willReturn(['authenticationID' => self::AUTHENTICATION_ID]);
+
+        $result = $this->service->getTaskId($this->mockIndexOptions());
 
         $this->assertSame(self::TASK_ID, $result);
     }
@@ -225,19 +237,59 @@ class IngestionTaskServiceTest extends TestCase
         $this->setupEmptyCollection();
         $this->setupEmptyDestinationList();
 
+        $this->ingestionClient->method('listSources')
+            ->willReturn($this->mockEmptySourceListResponse());
+
         $this->ingestionClient->expects($this->once())
             ->method('createSource')
-            ->willReturn($this->mockSourceCreateResponse(self::SOURCE_ID));
+            ->willReturn(['sourceID' => self::SOURCE_ID]);
+
+        $this->ingestionClient->method('listAuthentications')
+            ->willReturn($this->mockEmptyAuthenticationListResponse());
+
+        $this->ingestionClient->expects($this->once())
+            ->method('createAuthentication')
+            ->willReturn(['authenticationID' => self::AUTHENTICATION_ID]);
 
         $this->ingestionClient->expects($this->once())
             ->method('createDestination')
-            ->willReturn($this->mockDestinationCreateResponse(self::DESTINATION_ID));
+            ->willReturn(['destinationID' => self::DESTINATION_ID]);
 
         $this->ingestionClient->expects($this->once())
             ->method('createTask')
-            ->willReturn($this->mockTaskCreateResponse(self::TASK_ID));
+            ->willReturn(['taskID' => self::TASK_ID]);
 
-        $result = $this->service->getTaskId(self::STORE_ID, self::INDEX_NAME);
+        $result = $this->service->getTaskId($this->mockIndexOptions());
+
+        $this->assertSame(self::TASK_ID, $result);
+    }
+
+    public function testCreateFullPipelineReusesExistingAuthenticationWhenFound(): void
+    {
+        $this->setupEmptyCollection();
+        $this->setupEmptyDestinationList();
+
+        $this->ingestionClient->method('listSources')
+            ->willReturn($this->mockEmptySourceListResponse());
+
+        $this->ingestionClient->method('createSource')
+            ->willReturn(['sourceID' => self::SOURCE_ID]);
+
+        $this->ingestionClient->method('listAuthentications')
+            ->willReturn($this->mockAuthenticationListResponseWithMatch(
+                self::AUTHENTICATION_ID,
+                'Magento (Store ' . self::STORE_ID . ')'
+            ));
+
+        $this->ingestionClient->expects($this->never())->method('createAuthentication');
+
+        $this->ingestionClient->method('createDestination')
+            ->willReturn(['destinationID' => self::DESTINATION_ID]);
+
+        $this->ingestionClient->method('createTask')
+            ->willReturn(['taskID' => self::TASK_ID]);
+
+        $result = $this->service->getTaskId($this->mockIndexOptions());
 
         $this->assertSame(self::TASK_ID, $result);
     }
@@ -248,7 +300,7 @@ class IngestionTaskServiceTest extends TestCase
         $this->setupEmptyDestinationList();
         $this->setupCreatePipelineMocks();
         $this->ingestionClient->method('createTask')
-            ->willReturn($this->mockTaskCreateResponse(self::TASK_ID));
+            ->willReturn(['taskID' => self::TASK_ID]);
 
         $newTaskModel = $this->createMock(IngestionTask::class);
         $this->taskFactory->method('create')->willReturn($newTaskModel);
@@ -257,7 +309,7 @@ class IngestionTaskServiceTest extends TestCase
             ->method('save')
             ->with($newTaskModel);
 
-        $this->service->getTaskId(self::STORE_ID, self::INDEX_NAME);
+        $this->service->getTaskId($this->mockIndexOptions());
     }
 
     // --- Invalidation ---
@@ -272,7 +324,7 @@ class IngestionTaskServiceTest extends TestCase
             ],
         ]);
 
-        $this->service->invalidate(self::STORE_ID, self::INDEX_NAME);
+        $this->service->invalidate($this->mockIndexOptions());
 
         $cache = $this->getPrivateProperty($this->service, 'cache');
         $this->assertArrayNotHasKey(self::INDEX_NAME, $cache[self::STORE_ID] ?? []);
@@ -299,6 +351,16 @@ class IngestionTaskServiceTest extends TestCase
     }
 
     // --- Helpers ---
+
+    private function mockIndexOptions(
+        int $storeId = self::STORE_ID,
+        string $indexName = self::INDEX_NAME
+    ): IndexOptionsInterface&MockObject {
+        $mock = $this->createMock(IndexOptionsInterface::class);
+        $mock->method('getStoreId')->willReturn($storeId);
+        $mock->method('getIndexName')->willReturn($indexName);
+        return $mock;
+    }
 
     private function setupEmptyCollection(): void
     {
@@ -333,71 +395,81 @@ class IngestionTaskServiceTest extends TestCase
 
     private function setupCreatePipelineMocks(): void
     {
+        $this->ingestionClient->method('listSources')
+            ->willReturn($this->mockEmptySourceListResponse());
+
         $this->ingestionClient->method('createSource')
-            ->willReturn($this->mockSourceCreateResponse(self::SOURCE_ID));
+            ->willReturn(['sourceID' => self::SOURCE_ID]);
+
+        $this->ingestionClient->method('listAuthentications')
+            ->willReturn($this->mockEmptyAuthenticationListResponse());
+
+        $this->ingestionClient->method('createAuthentication')
+            ->willReturn(['authenticationID' => self::AUTHENTICATION_ID]);
 
         $this->ingestionClient->method('createDestination')
-            ->willReturn($this->mockDestinationCreateResponse(self::DESTINATION_ID));
+            ->willReturn(['destinationID' => self::DESTINATION_ID]);
     }
 
     private function mockDestinationListResponse(
         array $destinationIdToIndexMap,
         int $nbPages
-    ): ListDestinationsResponse&MockObject {
+    ): array {
         $destinations = [];
         foreach ($destinationIdToIndexMap as $destinationId => $indexName) {
-            $input = $this->createMock(DestinationInput::class);
-            $input->method('getIndexName')->willReturn($indexName);
-
-            $destination = $this->createMock(Destination::class);
-            $destination->method('getDestinationID')->willReturn($destinationId);
-            $destination->method('getInput')->willReturn($input);
-
-            $destinations[] = $destination;
+            $destinations[] = [
+                'destinationID' => $destinationId,
+                'input' => ['indexName' => $indexName],
+            ];
         }
 
-        $pagination = $this->createMock(Pagination::class);
-        $pagination->method('getNbPages')->willReturn($nbPages);
-
-        $response = $this->createMock(ListDestinationsResponse::class);
-        $response->method('getDestinations')->willReturn($destinations);
-        $response->method('getPagination')->willReturn($pagination);
-
-        return $response;
+        return [
+            'destinations' => $destinations,
+            'pagination' => ['nbPages' => $nbPages],
+        ];
     }
 
-    private function mockTaskListResponseWithTask(string $taskId): ListTasksResponse&MockObject
+    private function mockTaskListResponseWithTask(string $taskId): array
     {
-        $task = $this->createMock(Task::class);
-        $task->method('getTaskID')->willReturn($taskId);
-
-        $response = $this->createMock(ListTasksResponse::class);
-        $response->method('getTasks')->willReturn([$task]);
-
-        return $response;
+        return [
+            'tasks' => [
+                [
+                    'taskID' => $taskId,
+                    'sourceID' => self::SOURCE_ID,
+                    'destinationID' => self::DESTINATION_ID,
+                ],
+            ],
+        ];
     }
 
-    private function mockTaskCreateResponse(string $taskId): TaskCreateResponse&MockObject
+    private function mockEmptySourceListResponse(): array
     {
-        $response = $this->createMock(TaskCreateResponse::class);
-        $response->method('getTaskID')->willReturn($taskId);
-
-        return $response;
+        return [
+            'sources' => [],
+            'pagination' => ['nbPages' => 1],
+        ];
     }
 
-    private function mockSourceCreateResponse(string $sourceId): SourceCreateResponse&MockObject
+    private function mockEmptyAuthenticationListResponse(): array
     {
-        $response = $this->createMock(SourceCreateResponse::class);
-        $response->method('getSourceID')->willReturn($sourceId);
-
-        return $response;
+        return [
+            'authentications' => [],
+            'pagination' => ['nbPages' => 1],
+        ];
     }
 
-    private function mockDestinationCreateResponse(string $destinationId): DestinationCreateResponse&MockObject
-    {
-        $response = $this->createMock(DestinationCreateResponse::class);
-        $response->method('getDestinationID')->willReturn($destinationId);
-
-        return $response;
+    private function mockAuthenticationListResponseWithMatch(
+        string $authenticationId,
+        string $name
+    ): array {
+        return [
+            'authentications' => [
+                [
+                    'authenticationID' => $authenticationId,
+                    'name' => $name,
+                ],
+            ],
+            'pagination' => ['nbPages' => 1],
+        ];
     }
 }
