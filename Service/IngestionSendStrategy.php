@@ -107,6 +107,8 @@ class IngestionSendStrategy implements SendStrategyInterface
         IndexOptionsInterface $indexOptions,
         array $payload
     ): array {
+        $this->taskService->getTaskId($indexOptions); //proactively ensure prod task pipeline exists
+
         $client = $this->clientProvider->getClient($indexOptions->getStoreId());
         $tempIndexName = $indexOptions->getIndexName();
         $productionIndexName = $this->indexNameFetcher->getOriginalIndexName($tempIndexName);
