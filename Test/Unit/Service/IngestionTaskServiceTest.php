@@ -7,6 +7,7 @@ use Algolia\AlgoliaSearch\Api\IngestionClient;
 use Algolia\AlgoliaSearch\Api\LoggerInterface;
 use Algolia\AlgoliaSearch\Exceptions\NotFoundException;
 use Algolia\AlgoliaSearch\Helper\ConfigHelper;
+use Algolia\AlgoliaSearch\Service\IndexNameFetcher;
 use Algolia\AlgoliaSearch\Test\TestCase;
 use Algolia\Ingestion\Api\IngestionClientProviderInterface;
 use Algolia\Ingestion\Helper\IngestionConfigHelper;
@@ -22,6 +23,7 @@ class IngestionTaskServiceTest extends TestCase
 {
     private const STORE_ID = 1;
     private const INDEX_NAME = 'test_default_products';
+    private const TMP_INDEX_NAME = 'test_default_products_tmp';
     private const TASK_ID = 'task-uuid-1234';
     private const SOURCE_ID = 'source-uuid-5678';
     private const DESTINATION_ID = 'dest-uuid-9012';
@@ -35,6 +37,7 @@ class IngestionTaskServiceTest extends TestCase
     private null|(IngestionTaskResource&MockObject) $taskResource = null;
     private null|(CollectionFactory&MockObject) $collectionFactory = null;
     private null|(Collection&MockObject) $collection = null;
+    private null|(IndexNameFetcher&MockObject) $indexNameFetcher = null;
     private null|(LoggerInterface&MockObject) $logger = null;
     private ?IngestionTaskService $service = null;
 
@@ -63,6 +66,10 @@ class IngestionTaskServiceTest extends TestCase
 
         $this->taskFactory->method('create')->willReturn($this->createMock(IngestionTask::class));
 
+        $this->indexNameFetcher = $this->createMock(IndexNameFetcher::class);
+        $this->indexNameFetcher->method('getOriginalIndexName')
+            ->willReturnCallback(fn(string $name) => preg_replace('/_tmp$/', '', $name));
+
         $this->logger = $this->createMock(LoggerInterface::class);
 
         $this->service = new IngestionTaskService(
@@ -72,6 +79,7 @@ class IngestionTaskServiceTest extends TestCase
             $this->taskFactory,
             $this->taskResource,
             $this->collectionFactory,
+            $this->indexNameFetcher,
             $this->logger
         );
     }
@@ -350,15 +358,82 @@ class IngestionTaskServiceTest extends TestCase
         $this->assertNotEmpty($cache[2] ?? []);
     }
 
+    // --- Temporary index resolution ---
+
+    public function testGetTaskIdResolvesProductionNameForTempIndex(): void
+    {
+        $this->setupEmptyCollection();
+        $this->setupEmptyDestinationList();
+        $this->setupCreatePipelineMocks();
+        $this->ingestionClient->method('createTask')
+            ->willReturn(['taskID' => self::TASK_ID]);
+
+        $tempOptions = $this->mockIndexOptions(self::STORE_ID, self::TMP_INDEX_NAME, true);
+        $result = $this->service->getTaskId($tempOptions);
+
+        $this->assertSame(self::TASK_ID, $result);
+
+        $cache = $this->getPrivateProperty($this->service, 'cache');
+        $this->assertSame(self::TASK_ID, $cache[self::STORE_ID][self::INDEX_NAME] ?? null);
+        $this->assertArrayNotHasKey(self::TMP_INDEX_NAME, $cache[self::STORE_ID] ?? []);
+    }
+
+    public function testInvalidateResolvesProductionNameForTempIndex(): void
+    {
+        $this->setupEmptyCollection();
+        $this->setPrivateProperty($this->service, 'cache', [
+            self::STORE_ID => [
+                self::INDEX_NAME => self::TASK_ID,
+                'other_index' => 'other-task-id',
+            ],
+        ]);
+
+        $tempOptions = $this->mockIndexOptions(self::STORE_ID, self::TMP_INDEX_NAME, true);
+        $this->service->invalidate($tempOptions);
+
+        $cache = $this->getPrivateProperty($this->service, 'cache');
+        $this->assertArrayNotHasKey(self::INDEX_NAME, $cache[self::STORE_ID] ?? []);
+        $this->assertArrayHasKey('other_index', $cache[self::STORE_ID] ?? []);
+    }
+
+    public function testGetTaskIdUsesIndexNameDirectlyForNonTempIndex(): void
+    {
+        $this->indexNameFetcher = $this->createMock(IndexNameFetcher::class);
+        $this->indexNameFetcher->expects($this->never())->method('getOriginalIndexName');
+
+        $this->service = new IngestionTaskService(
+            $this->clientProvider,
+            $this->configHelper,
+            $this->algoliaConfigHelper,
+            $this->taskFactory,
+            $this->taskResource,
+            $this->collectionFactory,
+            $this->indexNameFetcher,
+            $this->logger
+        );
+
+        $this->setPrivateProperty(
+            $this->service,
+            'cache',
+            [self::STORE_ID => [self::INDEX_NAME => self::TASK_ID]]
+        );
+
+        $result = $this->service->getTaskId($this->mockIndexOptions());
+
+        $this->assertSame(self::TASK_ID, $result);
+    }
+
     // --- Helpers ---
 
     private function mockIndexOptions(
         int $storeId = self::STORE_ID,
-        string $indexName = self::INDEX_NAME
+        string $indexName = self::INDEX_NAME,
+        bool $isTemporaryIndex = false
     ): IndexOptionsInterface&MockObject {
         $mock = $this->createMock(IndexOptionsInterface::class);
         $mock->method('getStoreId')->willReturn($storeId);
         $mock->method('getIndexName')->willReturn($indexName);
+        $mock->method('isTemporaryIndex')->willReturn($isTemporaryIndex);
         return $mock;
     }
 
