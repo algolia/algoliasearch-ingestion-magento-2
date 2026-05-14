@@ -360,13 +360,63 @@ class IngestionSendStrategyTest extends TestCase
         $this->logger->expects($this->once())
             ->method('warning')
             ->with(
-                'Ingestion push 404 on temp index - invalidating and retrying',
-                $this->callback(fn($ctx) => $ctx['indexName'] === self::TMP_INDEX_NAME)
+                'Ingestion push 404 - invalidating stale task and retrying',
+                $this->callback(fn($ctx) => $ctx['indexName'] === self::TMP_INDEX_NAME
+                    && $ctx['isTemporary'] === true)
             );
 
         $this->strategy->send($indexOptions, [
             ['action' => 'addObject', 'body' => ['objectID' => '1']],
         ]);
+    }
+
+    public function testSendDoesNotRetryAgainOnDouble404(): void
+    {
+        $indexOptions = $this->mockIndexOptions(self::INDEX_NAME, false);
+        $this->taskService->method('getTaskId')->willReturn(self::TASK_ID);
+
+        $this->ingestionClient->expects($this->exactly(2))
+            ->method('pushTask')
+            ->willThrowException(new NotFoundException('Task not found', 404));
+
+        $this->taskService->expects($this->once())
+            ->method('invalidate')
+            ->with($indexOptions);
+
+        $this->configHelper->method('isFallbackEnabled')->willReturn(true);
+
+        $requests = [['action' => 'addObject', 'body' => ['objectID' => '1']]];
+        $this->directSendStrategy->expects($this->once())
+            ->method('send')
+            ->with($indexOptions, $requests)
+            ->willReturn(['taskID' => 'fallback']);
+
+        $result = $this->strategy->send($indexOptions, $requests);
+        $this->assertSame(['taskID' => 'fallback'], $result);
+    }
+
+    // --- getTaskId failure routing ---
+
+    public function testSendRoutesGetTaskIdExceptionToHandleError(): void
+    {
+        $indexOptions = $this->mockIndexOptions(self::INDEX_NAME, false);
+
+        $this->taskService->method('getTaskId')
+            ->willThrowException(new \RuntimeException('Task lookup failed'));
+
+        $this->ingestionClient->expects($this->never())->method('pushTask');
+        $this->ingestionClient->expects($this->never())->method('push');
+
+        $this->configHelper->method('isFallbackEnabled')->willReturn(true);
+
+        $requests = [['action' => 'addObject', 'body' => ['objectID' => '1']]];
+        $this->directSendStrategy->expects($this->once())
+            ->method('send')
+            ->with($indexOptions, $requests)
+            ->willReturn(['taskID' => 'fallback']);
+
+        $result = $this->strategy->send($indexOptions, $requests);
+        $this->assertSame(['taskID' => 'fallback'], $result);
     }
 
     public function testTempIndex404RetrySucceeds(): void
