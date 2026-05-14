@@ -75,22 +75,13 @@ class IngestionSendStrategy implements SendStrategyInterface
         try {
             return $this->pushActionGroup($indexOptions, $action, $records);
         } catch (NotFoundException $e) {
-            if ($indexOptions->isTemporaryIndex()) {
-                $this->logger->warning('Ingestion push 404 on temp index - invalidating and retrying', [
-                    'storeId' => $indexOptions->getStoreId(),
-                    'indexName' => $indexOptions->getIndexName(),
-                ]);
-                $this->taskService->invalidate($indexOptions);
-                return $this->pushToTemporaryIndex($indexOptions, ['action' => $action, 'records' => $records]);
-            }
-
-            $this->logger->warning('Ingestion pushTask 404 - invalidating stale task', [
-                'storeId' => $indexOptions->getStoreId(),
-                'indexName' => $indexOptions->getIndexName(),
+            $this->logger->warning('Ingestion push 404 - invalidating stale task and retrying', [
+                'storeId'     => $indexOptions->getStoreId(),
+                'indexName'   => $indexOptions->getIndexName(),
+                'isTemporary' => $indexOptions->isTemporaryIndex(),
             ]);
-
             $this->taskService->invalidate($indexOptions);
-            return $this->pushToProductionIndex($indexOptions, ['action' => $action, 'records' => $records]);
+            return $this->pushActionGroup($indexOptions, $action, $records);
         }
     }
 

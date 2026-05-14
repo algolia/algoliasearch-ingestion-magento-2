@@ -226,6 +226,16 @@ class IngestionTaskService implements IngestionTaskServiceInterface
 
         $taskId = $this->createTask($client, $sourceId, $destId);
         $this->persistTask($storeId, $indexName, $taskId, $sourceId, $destId, $authId);
+
+        $this->logger->info('Created full ingestion pipeline for {indexName} (store {storeId})', [
+            'storeId'          => $storeId,
+            'indexName'        => $indexName,
+            'taskId'           => $taskId,
+            'sourceId'         => $sourceId,
+            'destinationId'    => $destId,
+            'authenticationId' => $authId,
+        ]);
+
         return $taskId;
     }
 
@@ -363,6 +373,16 @@ class IngestionTaskService implements IngestionTaskServiceInterface
             $destination['destinationID'],
             $destination['authenticationID']
         );
+
+        $this->logger->info('Created ingestion task for existing destination for {indexName} (store {storeId})', [
+            'storeId'          => $storeId,
+            'indexName'        => $indexName,
+            'taskId'           => $taskId,
+            'sourceId'         => $sourceId,
+            'destinationId'    => $destination['destinationID'],
+            'authenticationId' => $destination['authenticationID'],
+        ]);
+
         return $taskId;
     }
 
