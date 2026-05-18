@@ -53,7 +53,7 @@ class IngestionSendStrategy implements SendStrategyInterface
      * - partialUpdateObjectNoCreate
      * - deleteObject
      * - delete
-     *  
+     *
      * @see https://www.algolia.com/doc/rest-api/ingestion/push-task#body-action
      * @return array<string, array<int, mixed>>
      */
@@ -75,17 +75,13 @@ class IngestionSendStrategy implements SendStrategyInterface
         try {
             return $this->pushActionGroup($indexOptions, $action, $records);
         } catch (NotFoundException $e) {
-            if ($indexOptions->isTemporaryIndex()) {
-                throw $e; // Unexpected error - rethrow
-            }
-
-            $this->logger->warning('Ingestion pushTask 404 - invalidating stale task', [
-                'storeId' => $indexOptions->getStoreId(),
-                'indexName' => $indexOptions->getIndexName(),
+            $this->logger->warning('Ingestion push 404 - invalidating stale task and retrying', [
+                'storeId'     => $indexOptions->getStoreId(),
+                'indexName'   => $indexOptions->getIndexName(),
+                'isTemporary' => $indexOptions->isTemporaryIndex(),
             ]);
-
             $this->taskService->invalidate($indexOptions);
-            return $this->pushToProductionIndex($indexOptions, ['action' => $action, 'records' => $records]);
+            return $this->pushActionGroup($indexOptions, $action, $records);
         }
     }
 
@@ -107,6 +103,8 @@ class IngestionSendStrategy implements SendStrategyInterface
         IndexOptionsInterface $indexOptions,
         array $payload
     ): array {
+        $this->taskService->getTaskId($indexOptions); //proactively ensure prod task pipeline exists
+
         $client = $this->clientProvider->getClient($indexOptions->getStoreId());
         $tempIndexName = $indexOptions->getIndexName();
         $productionIndexName = $this->indexNameFetcher->getOriginalIndexName($tempIndexName);

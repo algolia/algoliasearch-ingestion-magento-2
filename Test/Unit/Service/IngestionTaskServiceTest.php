@@ -7,6 +7,7 @@ use Algolia\AlgoliaSearch\Api\IngestionClient;
 use Algolia\AlgoliaSearch\Api\LoggerInterface;
 use Algolia\AlgoliaSearch\Exceptions\NotFoundException;
 use Algolia\AlgoliaSearch\Helper\ConfigHelper;
+use Algolia\AlgoliaSearch\Service\IndexNameFetcher;
 use Algolia\AlgoliaSearch\Test\TestCase;
 use Algolia\Ingestion\Api\IngestionClientProviderInterface;
 use Algolia\Ingestion\Helper\IngestionConfigHelper;
@@ -22,6 +23,7 @@ class IngestionTaskServiceTest extends TestCase
 {
     private const STORE_ID = 1;
     private const INDEX_NAME = 'test_default_products';
+    private const TMP_INDEX_NAME = 'test_default_products_tmp';
     private const TASK_ID = 'task-uuid-1234';
     private const SOURCE_ID = 'source-uuid-5678';
     private const DESTINATION_ID = 'dest-uuid-9012';
@@ -35,6 +37,7 @@ class IngestionTaskServiceTest extends TestCase
     private null|(IngestionTaskResource&MockObject) $taskResource = null;
     private null|(CollectionFactory&MockObject) $collectionFactory = null;
     private null|(Collection&MockObject) $collection = null;
+    private null|(IndexNameFetcher&MockObject) $indexNameFetcher = null;
     private null|(LoggerInterface&MockObject) $logger = null;
     private ?IngestionTaskService $service = null;
 
@@ -63,6 +66,10 @@ class IngestionTaskServiceTest extends TestCase
 
         $this->taskFactory->method('create')->willReturn($this->createMock(IngestionTask::class));
 
+        $this->indexNameFetcher = $this->createMock(IndexNameFetcher::class);
+        $this->indexNameFetcher->method('getOriginalIndexName')
+            ->willReturnCallback(fn(string $name) => preg_replace('/_tmp$/', '', $name));
+
         $this->logger = $this->createMock(LoggerInterface::class);
 
         $this->service = new IngestionTaskService(
@@ -72,6 +79,7 @@ class IngestionTaskServiceTest extends TestCase
             $this->taskFactory,
             $this->taskResource,
             $this->collectionFactory,
+            $this->indexNameFetcher,
             $this->logger
         );
     }
@@ -93,6 +101,30 @@ class IngestionTaskServiceTest extends TestCase
         $result = $this->service->getTaskId($this->mockIndexOptions());
 
         $this->assertSame(self::TASK_ID, $result);
+    }
+
+    public function testGetTaskIdDoesNotShareCacheAcrossStores(): void
+    {
+        $this->setPrivateProperty(
+            $this->service,
+            'cache',
+            [self::STORE_ID => [self::INDEX_NAME => self::TASK_ID]]
+        );
+
+        $this->setupEmptyCollection();
+        $this->setupEmptyDestinationList();
+        $this->setupCreatePipelineMocks();
+        $this->ingestionClient->expects($this->once())
+            ->method('createTask')
+            ->willReturn(['taskID' => 'store-2-task']);
+
+        $result = $this->service->getTaskId($this->mockIndexOptions(2, self::INDEX_NAME));
+
+        $this->assertSame('store-2-task', $result);
+
+        $cache = $this->getPrivateProperty($this->service, 'cache');
+        $this->assertSame(self::TASK_ID, $cache[self::STORE_ID][self::INDEX_NAME]);
+        $this->assertSame('store-2-task', $cache[2][self::INDEX_NAME]);
     }
 
     public function testGetTaskIdCachesResultAfterFirstResolution(): void
@@ -170,6 +202,10 @@ class IngestionTaskServiceTest extends TestCase
         $this->ingestionClient->method('createTask')
             ->willReturn(['taskID' => self::TASK_ID]);
 
+        $this->taskResource->expects($this->once())
+            ->method('delete')
+            ->with($taskModel);
+
         $result = $this->service->getTaskId($this->mockIndexOptions());
 
         $this->assertSame(self::TASK_ID, $result);
@@ -226,6 +262,74 @@ class IngestionTaskServiceTest extends TestCase
 
         $this->ingestionClient->method('getDestination')
             ->willReturn(['authenticationID' => self::AUTHENTICATION_ID]);
+
+        $result = $this->service->getTaskId($this->mockIndexOptions());
+
+        $this->assertSame(self::TASK_ID, $result);
+    }
+
+    public function testGetTaskIdCreatesTaskForExistingDestinationWithoutPushTask(): void
+    {
+        $this->setupEmptyCollection();
+
+        // Matching destination exists, but no push task is attached to it
+        $this->ingestionClient->method('listDestinations')
+            ->willReturn($this->mockDestinationListResponse(
+                [self::DESTINATION_ID => self::INDEX_NAME],
+                nbPages: 1
+            ));
+
+        $this->ingestionClient->method('listTasks')
+            ->willReturn(['tasks' => []]);
+
+        $this->ingestionClient->method('listSources')
+            ->willReturn($this->mockEmptySourceListResponse());
+
+        $this->ingestionClient->expects($this->once())
+            ->method('createSource')
+            ->willReturn(['sourceID' => self::SOURCE_ID]);
+
+        // Existing destination + authentication must be reused, never re-created
+        $this->ingestionClient->expects($this->never())->method('createDestination');
+        $this->ingestionClient->expects($this->never())->method('createAuthentication');
+        $this->ingestionClient->expects($this->never())->method('listAuthentications');
+
+        $this->ingestionClient->expects($this->once())
+            ->method('createTask')
+            ->with($this->callback(fn($args) =>
+                $args['sourceID'] === self::SOURCE_ID
+                && $args['destinationID'] === self::DESTINATION_ID
+            ))
+            ->willReturn(['taskID' => self::TASK_ID]);
+
+        $result = $this->service->getTaskId($this->mockIndexOptions());
+
+        $this->assertSame(self::TASK_ID, $result);
+    }
+
+    public function testGetTaskIdSkipsInternalDestinationWithOwner(): void
+    {
+        $this->setupEmptyCollection();
+
+        // Destination matches the index name but is owned by another system - must be skipped
+        $this->ingestionClient->method('listDestinations')
+            ->willReturn([
+                'destinations' => [[
+                    'destinationID' => self::DESTINATION_ID,
+                    'input' => ['indexName' => self::INDEX_NAME],
+                    'authenticationID' => self::AUTHENTICATION_ID,
+                    'owner' => 'internal-magento-system',
+                ]],
+                'pagination' => ['nbPages' => 1],
+            ]);
+
+        $this->ingestionClient->expects($this->never())->method('listTasks');
+
+        $this->setupCreatePipelineMocks();
+        $this->ingestionClient->expects($this->once())->method('createDestination');
+        $this->ingestionClient->expects($this->once())
+            ->method('createTask')
+            ->willReturn(['taskID' => self::TASK_ID]);
 
         $result = $this->service->getTaskId($this->mockIndexOptions());
 
@@ -294,6 +398,39 @@ class IngestionTaskServiceTest extends TestCase
         $this->assertSame(self::TASK_ID, $result);
     }
 
+    public function testCreateFullPipelineReusesExistingSourceWhenFound(): void
+    {
+        $this->setupEmptyCollection();
+        $this->setupEmptyDestinationList();
+
+        $this->ingestionClient->method('listSources')
+            ->willReturn([
+                'sources' => [[
+                    'sourceID' => self::SOURCE_ID,
+                    'name' => 'Magento (Store ' . self::STORE_ID . ')',
+                ]],
+                'pagination' => ['nbPages' => 1],
+            ]);
+
+        $this->ingestionClient->expects($this->never())->method('createSource');
+
+        $this->ingestionClient->method('listAuthentications')
+            ->willReturn($this->mockEmptyAuthenticationListResponse());
+
+        $this->ingestionClient->method('createAuthentication')
+            ->willReturn(['authenticationID' => self::AUTHENTICATION_ID]);
+
+        $this->ingestionClient->method('createDestination')
+            ->willReturn(['destinationID' => self::DESTINATION_ID]);
+
+        $this->ingestionClient->method('createTask')
+            ->willReturn(['taskID' => self::TASK_ID]);
+
+        $result = $this->service->getTaskId($this->mockIndexOptions());
+
+        $this->assertSame(self::TASK_ID, $result);
+    }
+
     public function testGetTaskIdPersistsTaskAfterCreation(): void
     {
         $this->setupEmptyCollection();
@@ -331,6 +468,64 @@ class IngestionTaskServiceTest extends TestCase
         $this->assertArrayHasKey('other_index', $cache[self::STORE_ID] ?? []);
     }
 
+    public function testInvalidateDeletesDatabaseRecord(): void
+    {
+        $taskModel = $this->mockPersistedTaskModel(self::TASK_ID);
+        $this->setupCollectionReturning($taskModel);
+
+        $this->taskResource->expects($this->once())
+            ->method('delete')
+            ->with($taskModel);
+
+        $this->service->invalidate($this->mockIndexOptions());
+    }
+
+    public function testInvalidateIsNoopWhenNoDatabaseRecordExists(): void
+    {
+        $this->setupEmptyCollection();
+
+        $this->taskResource->expects($this->never())->method('delete');
+
+        $this->service->invalidate($this->mockIndexOptions());
+    }
+
+    public function testInvalidateByStoreIdDeletesAllDatabaseRecordsForStore(): void
+    {
+        $task1 = $this->createMock(IngestionTask::class);
+        $task2 = $this->createMock(IngestionTask::class);
+
+        $collection = $this->createMock(Collection::class);
+        $collection->method('addFieldToFilter')->willReturnSelf();
+        $collection->method('getIterator')
+            ->willReturn(new \ArrayIterator([$task1, $task2]));
+
+        $collectionFactory = $this->createMock(CollectionFactory::class);
+        $collectionFactory->method('create')->willReturn($collection);
+
+        $this->service = new IngestionTaskService(
+            $this->clientProvider,
+            $this->configHelper,
+            $this->algoliaConfigHelper,
+            $this->taskFactory,
+            $this->taskResource,
+            $collectionFactory,
+            $this->indexNameFetcher,
+            $this->logger
+        );
+
+        $deleted = [];
+        $this->taskResource->expects($this->exactly(2))
+            ->method('delete')
+            ->willReturnCallback(function ($task) use (&$deleted) {
+                $deleted[] = $task;
+                return $this->taskResource;
+            });
+
+        $this->service->invalidateByStoreId(self::STORE_ID);
+
+        $this->assertSame([$task1, $task2], $deleted);
+    }
+
     public function testInvalidateByStoreIdClearsAllEntriesForStore(): void
     {
         $this->setPrivateProperty($this->service, 'cache', [
@@ -350,15 +545,82 @@ class IngestionTaskServiceTest extends TestCase
         $this->assertNotEmpty($cache[2] ?? []);
     }
 
+    // --- Temporary index resolution ---
+
+    public function testGetTaskIdResolvesProductionNameForTempIndex(): void
+    {
+        $this->setupEmptyCollection();
+        $this->setupEmptyDestinationList();
+        $this->setupCreatePipelineMocks();
+        $this->ingestionClient->method('createTask')
+            ->willReturn(['taskID' => self::TASK_ID]);
+
+        $tempOptions = $this->mockIndexOptions(self::STORE_ID, self::TMP_INDEX_NAME, true);
+        $result = $this->service->getTaskId($tempOptions);
+
+        $this->assertSame(self::TASK_ID, $result);
+
+        $cache = $this->getPrivateProperty($this->service, 'cache');
+        $this->assertSame(self::TASK_ID, $cache[self::STORE_ID][self::INDEX_NAME] ?? null);
+        $this->assertArrayNotHasKey(self::TMP_INDEX_NAME, $cache[self::STORE_ID] ?? []);
+    }
+
+    public function testInvalidateResolvesProductionNameForTempIndex(): void
+    {
+        $this->setupEmptyCollection();
+        $this->setPrivateProperty($this->service, 'cache', [
+            self::STORE_ID => [
+                self::INDEX_NAME => self::TASK_ID,
+                'other_index' => 'other-task-id',
+            ],
+        ]);
+
+        $tempOptions = $this->mockIndexOptions(self::STORE_ID, self::TMP_INDEX_NAME, true);
+        $this->service->invalidate($tempOptions);
+
+        $cache = $this->getPrivateProperty($this->service, 'cache');
+        $this->assertArrayNotHasKey(self::INDEX_NAME, $cache[self::STORE_ID] ?? []);
+        $this->assertArrayHasKey('other_index', $cache[self::STORE_ID] ?? []);
+    }
+
+    public function testGetTaskIdUsesIndexNameDirectlyForNonTempIndex(): void
+    {
+        $this->indexNameFetcher = $this->createMock(IndexNameFetcher::class);
+        $this->indexNameFetcher->expects($this->never())->method('getOriginalIndexName');
+
+        $this->service = new IngestionTaskService(
+            $this->clientProvider,
+            $this->configHelper,
+            $this->algoliaConfigHelper,
+            $this->taskFactory,
+            $this->taskResource,
+            $this->collectionFactory,
+            $this->indexNameFetcher,
+            $this->logger
+        );
+
+        $this->setPrivateProperty(
+            $this->service,
+            'cache',
+            [self::STORE_ID => [self::INDEX_NAME => self::TASK_ID]]
+        );
+
+        $result = $this->service->getTaskId($this->mockIndexOptions());
+
+        $this->assertSame(self::TASK_ID, $result);
+    }
+
     // --- Helpers ---
 
     private function mockIndexOptions(
         int $storeId = self::STORE_ID,
-        string $indexName = self::INDEX_NAME
+        string $indexName = self::INDEX_NAME,
+        bool $isTemporaryIndex = false
     ): IndexOptionsInterface&MockObject {
         $mock = $this->createMock(IndexOptionsInterface::class);
         $mock->method('getStoreId')->willReturn($storeId);
         $mock->method('getIndexName')->willReturn($indexName);
+        $mock->method('isTemporaryIndex')->willReturn($isTemporaryIndex);
         return $mock;
     }
 
@@ -413,13 +675,15 @@ class IngestionTaskServiceTest extends TestCase
 
     private function mockDestinationListResponse(
         array $destinationIdToIndexMap,
-        int $nbPages
+        int $nbPages,
+        string $authenticationId = self::AUTHENTICATION_ID
     ): array {
         $destinations = [];
         foreach ($destinationIdToIndexMap as $destinationId => $indexName) {
             $destinations[] = [
                 'destinationID' => $destinationId,
                 'input' => ['indexName' => $indexName],
+                'authenticationID' => $authenticationId,
             ];
         }
 

@@ -8,6 +8,7 @@ use Algolia\AlgoliaSearch\Api\LoggerInterface;
 use Algolia\AlgoliaSearch\Exceptions\AlgoliaException;
 use Algolia\AlgoliaSearch\Exceptions\NotFoundException;
 use Algolia\AlgoliaSearch\Helper\ConfigHelper;
+use Algolia\AlgoliaSearch\Service\IndexNameFetcher;
 use Algolia\Ingestion\Api\IngestionClientProviderInterface;
 use Algolia\Ingestion\Api\IngestionTaskServiceInterface;
 use Algolia\Ingestion\Helper\IngestionConfigHelper;
@@ -31,8 +32,18 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         protected IngestionTaskFactory             $taskFactory,
         protected IngestionTaskResource            $taskResource,
         protected CollectionFactory                $collectionFactory,
+        protected IndexNameFetcher                 $indexNameFetcher,
         protected LoggerInterface                  $logger
     ) {}
+
+    private function resolveProductionIndexName(IndexOptionsInterface $indexOptions): string
+    {
+        $indexName = $indexOptions->getIndexName();
+        if ($indexOptions->isTemporaryIndex()) {
+            return $this->indexNameFetcher->getOriginalIndexName($indexName);
+        }
+        return $indexName;
+    }
 
     /**
      * @throws AlreadyExistsException
@@ -42,7 +53,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
     public function getTaskId(IndexOptionsInterface $indexOptions): string
     {
         $storeId = $indexOptions->getStoreId();
-        $indexName = $indexOptions->getIndexName();
+        $indexName = $this->resolveProductionIndexName($indexOptions);
         $cached = $this->loadFromCache($storeId, $indexName);
         if ($cached !== null) {
             return $cached;
@@ -77,7 +88,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
     public function invalidate(IndexOptionsInterface $indexOptions): void
     {
         $storeId = $indexOptions->getStoreId();
-        $indexName = $indexOptions->getIndexName();
+        $indexName = $this->resolveProductionIndexName($indexOptions);
         unset($this->cache[$storeId][$indexName]);
 
         $dbTask = $this->loadFromDatabase($storeId, $indexName);
@@ -215,6 +226,16 @@ class IngestionTaskService implements IngestionTaskServiceInterface
 
         $taskId = $this->createTask($client, $sourceId, $destId);
         $this->persistTask($storeId, $indexName, $taskId, $sourceId, $destId, $authId);
+
+        $this->logger->info('Created full ingestion pipeline for {indexName} (store {storeId})', [
+            'storeId'          => $storeId,
+            'indexName'        => $indexName,
+            'taskId'           => $taskId,
+            'sourceId'         => $sourceId,
+            'destinationId'    => $destId,
+            'authenticationId' => $authId,
+        ]);
+
         return $taskId;
     }
 
@@ -352,6 +373,16 @@ class IngestionTaskService implements IngestionTaskServiceInterface
             $destination['destinationID'],
             $destination['authenticationID']
         );
+
+        $this->logger->info('Created ingestion task for existing destination for {indexName} (store {storeId})', [
+            'storeId'          => $storeId,
+            'indexName'        => $indexName,
+            'taskId'           => $taskId,
+            'sourceId'         => $sourceId,
+            'destinationId'    => $destination['destinationID'],
+            'authenticationId' => $destination['authenticationID'],
+        ]);
+
         return $taskId;
     }
 

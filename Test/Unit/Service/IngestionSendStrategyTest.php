@@ -137,7 +137,10 @@ class IngestionSendStrategyTest extends TestCase
             ->with(self::TMP_INDEX_NAME, $expectedPayload, true, self::INDEX_NAME)
             ->willReturn(['taskID' => '456']);
 
-        $this->taskService->expects($this->never())->method('getTaskId');
+        $this->taskService->expects($this->once())
+            ->method('getTaskId')
+            ->with($indexOptions)
+            ->willReturn(self::TASK_ID);
         $this->ingestionClient->expects($this->never())->method('pushTask');
 
         $result = $this->strategy->send($indexOptions, [
@@ -145,6 +148,34 @@ class IngestionSendStrategyTest extends TestCase
         ]);
 
         $this->assertSame(['taskID' => '456'], $result);
+    }
+
+    public function testSendEnsuresTaskExistsBeforeTempPush(): void
+    {
+        $indexOptions = $this->mockIndexOptions(self::TMP_INDEX_NAME, true);
+        $this->indexNameFetcher->method('getOriginalIndexName')->willReturn(self::INDEX_NAME);
+
+        $callOrder = [];
+        $this->taskService->expects($this->once())
+            ->method('getTaskId')
+            ->with($indexOptions)
+            ->willReturnCallback(function () use (&$callOrder) {
+                $callOrder[] = 'getTaskId';
+                return self::TASK_ID;
+            });
+
+        $this->ingestionClient->expects($this->once())
+            ->method('push')
+            ->willReturnCallback(function () use (&$callOrder) {
+                $callOrder[] = 'push';
+                return ['taskID' => '456'];
+            });
+
+        $this->strategy->send($indexOptions, [
+            ['action' => 'addObject', 'body' => ['objectID' => '1']],
+        ]);
+
+        $this->assertSame(['getTaskId', 'push'], $callOrder);
     }
 
     public function testSendStripsTmpSuffixForReferenceIndex(): void
@@ -155,6 +186,8 @@ class IngestionSendStrategyTest extends TestCase
         $this->indexNameFetcher->method('getOriginalIndexName')
             ->with($tmpName)
             ->willReturn($prodName);
+
+        $this->taskService->method('getTaskId')->willReturn(self::TASK_ID);
 
         $this->ingestionClient->expects($this->once())
             ->method('push')
@@ -296,25 +329,120 @@ class IngestionSendStrategyTest extends TestCase
         $this->assertSame(['taskID' => '789'], $result);
     }
 
-    public function testSendDoesNotRetryFor404OnTempIndex(): void
+    public function testSendRetriesOnTempIndex404(): void
     {
         $indexOptions = $this->mockIndexOptions(self::TMP_INDEX_NAME, true);
         $this->indexNameFetcher->method('getOriginalIndexName')
             ->willReturn(self::INDEX_NAME);
 
-        $this->ingestionClient->method('push')
-            ->willThrowException(new NotFoundException('Not found', 404));
+        $this->taskService->expects($this->exactly(2))
+            ->method('getTaskId')
+            ->with($indexOptions)
+            ->willReturn(self::TASK_ID);
 
-        $this->configHelper->method('isFallbackEnabled')->willReturn(true);
-        $this->taskService->expects($this->never())->method('invalidate');
+        $this->taskService->expects($this->once())
+            ->method('invalidate')
+            ->with($indexOptions);
 
-        $this->directSendStrategy->expects($this->once())
-            ->method('send')
-            ->willReturn(['taskID' => 'fallback']);
+        $callCount = 0;
+        $this->ingestionClient->expects($this->exactly(2))
+            ->method('push')
+            ->willReturnCallback(function () use (&$callCount) {
+                $callCount++;
+                if ($callCount === 1) {
+                    throw new NotFoundException('Not found', 404);
+                }
+                return ['taskID' => 'retry-success'];
+            });
+
+        $this->directSendStrategy->expects($this->never())->method('send');
+
+        $this->logger->expects($this->once())
+            ->method('warning')
+            ->with(
+                'Ingestion push 404 - invalidating stale task and retrying',
+                $this->callback(fn($ctx) => $ctx['indexName'] === self::TMP_INDEX_NAME
+                    && $ctx['isTemporary'] === true)
+            );
 
         $this->strategy->send($indexOptions, [
             ['action' => 'addObject', 'body' => ['objectID' => '1']],
         ]);
+    }
+
+    public function testSendDoesNotRetryAgainOnDouble404(): void
+    {
+        $indexOptions = $this->mockIndexOptions(self::INDEX_NAME, false);
+        $this->taskService->method('getTaskId')->willReturn(self::TASK_ID);
+
+        $this->ingestionClient->expects($this->exactly(2))
+            ->method('pushTask')
+            ->willThrowException(new NotFoundException('Task not found', 404));
+
+        $this->taskService->expects($this->once())
+            ->method('invalidate')
+            ->with($indexOptions);
+
+        $this->configHelper->method('isFallbackEnabled')->willReturn(true);
+
+        $requests = [['action' => 'addObject', 'body' => ['objectID' => '1']]];
+        $this->directSendStrategy->expects($this->once())
+            ->method('send')
+            ->with($indexOptions, $requests)
+            ->willReturn(['taskID' => 'fallback']);
+
+        $result = $this->strategy->send($indexOptions, $requests);
+        $this->assertSame(['taskID' => 'fallback'], $result);
+    }
+
+    // --- getTaskId failure routing ---
+
+    public function testSendRoutesGetTaskIdExceptionToHandleError(): void
+    {
+        $indexOptions = $this->mockIndexOptions(self::INDEX_NAME, false);
+
+        $this->taskService->method('getTaskId')
+            ->willThrowException(new \RuntimeException('Task lookup failed'));
+
+        $this->ingestionClient->expects($this->never())->method('pushTask');
+        $this->ingestionClient->expects($this->never())->method('push');
+
+        $this->configHelper->method('isFallbackEnabled')->willReturn(true);
+
+        $requests = [['action' => 'addObject', 'body' => ['objectID' => '1']]];
+        $this->directSendStrategy->expects($this->once())
+            ->method('send')
+            ->with($indexOptions, $requests)
+            ->willReturn(['taskID' => 'fallback']);
+
+        $result = $this->strategy->send($indexOptions, $requests);
+        $this->assertSame(['taskID' => 'fallback'], $result);
+    }
+
+    public function testTempIndex404RetrySucceeds(): void
+    {
+        $indexOptions = $this->mockIndexOptions(self::TMP_INDEX_NAME, true);
+        $this->indexNameFetcher->method('getOriginalIndexName')
+            ->willReturn(self::INDEX_NAME);
+
+        $this->taskService->method('getTaskId')->willReturn(self::TASK_ID);
+        $this->taskService->expects($this->once())->method('invalidate')->with($indexOptions);
+
+        $callCount = 0;
+        $this->ingestionClient->method('push')
+            ->willReturnCallback(function () use (&$callCount) {
+                $callCount++;
+                if ($callCount === 1) {
+                    throw new NotFoundException('Not found', 404);
+                }
+                return ['taskID' => 'retry-success'];
+            });
+
+        $result = $this->strategy->send($indexOptions, [
+            ['action' => 'addObject', 'body' => ['objectID' => '1']],
+        ]);
+
+        $this->assertSame(['taskID' => 'retry-success'], $result);
     }
 
     // --- Return value ---
