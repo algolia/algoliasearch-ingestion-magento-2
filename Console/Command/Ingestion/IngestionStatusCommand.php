@@ -4,7 +4,8 @@ namespace Algolia\Ingestion\Console\Command\Ingestion;
 
 use Algolia\AlgoliaSearch\Service\StoreNameFetcher;
 use Algolia\Ingestion\Helper\IngestionConfigHelper;
-use Algolia\Ingestion\Model\ResourceModel\IngestionTask\CollectionFactory;
+use Algolia\Ingestion\Model\IngestionTask;
+use Algolia\Ingestion\Model\ResourceModel\IngestionTask\CollectionFactory as TaskCollectionFactory;
 use Magento\Framework\App\State;
 use Magento\Framework\Console\Cli;
 use Magento\Framework\Exception\LocalizedException;
@@ -18,11 +19,11 @@ class IngestionStatusCommand extends AbstractIngestionCommand
 {
     public function __construct(
         protected StoreManagerInterface $storeManager,
-        protected CollectionFactory $collectionFactory,
+        protected TaskCollectionFactory $collectionFactory,
         protected IngestionConfigHelper $ingestionConfigHelper,
-        State $state,
-        StoreNameFetcher $storeNameFetcher,
-        ?string $name = null
+        State                           $state,
+        StoreNameFetcher                $storeNameFetcher,
+        ?string                         $name = null
     ) {
         parent::__construct($storeManager, $state, $storeNameFetcher, $name);
     }
@@ -60,8 +61,33 @@ class IngestionStatusCommand extends AbstractIngestionCommand
             return Cli::RETURN_FAILURE;
         }
 
+        $byStore = $this->loadTasksGroupedByStore($filteredStoreIds);
+
+        if (empty($byStore)) {
+            $output->writeln('<comment>No ingestion task cache entries found.</comment>');
+            return Cli::RETURN_SUCCESS;
+        }
+
+        foreach ($byStore as $storeId => $tasks) {
+            $this->renderStoreTaskTable(
+                $output,
+                $storeId,
+                $tasks
+            );
+        }
+
+        $output->writeln('');
+        return Cli::RETURN_SUCCESS;
+    }
+
+    /**
+     * @param int[] $filteredStoreIds store IDs to filter by; empty means all stores
+     * @return array<int, array<int, IngestionTask>>
+     */
+    protected function loadTasksGroupedByStore(array $filteredStoreIds): array
+    {
         $collection = $this->collectionFactory->create();
-        if (!empty($filteredStoreIds)) {
+        if ($filteredStoreIds !== []) {
             $collection->addFieldToFilter('store_id', ['in' => $filteredStoreIds]);
         }
         $collection->setOrder('store_id', 'ASC');
@@ -72,39 +98,41 @@ class IngestionStatusCommand extends AbstractIngestionCommand
             $byStore[(int) $task->getData('store_id')][] = $task;
         }
 
-        if (empty($byStore)) {
-            $output->writeln('<comment>No ingestion task cache entries found.</comment>');
-            return Cli::RETURN_SUCCESS;
+        return $byStore;
+    }
+
+    /**
+     * @param array<int, IngestionTask> $tasks
+     */
+    protected function renderStoreTaskTable(
+        OutputInterface $output,
+        int $storeId,
+        array $tasks
+    ): void {
+        try {
+            $storeName = $this->storeNameFetcher->getStoreName($storeId);
+        } catch (NoSuchEntityException $e) {
+            $storeName = 'Unknown';
         }
 
-        foreach ($byStore as $storeId => $tasks) {
-            try {
-                $storeName = $this->storeNameFetcher->getStoreName($storeId);
-            } catch (NoSuchEntityException $e) {
-                $storeName = 'Unknown';
-            }
-
-            $enabled = $this->ingestionConfigHelper->isEnabled($storeId);
-            $enabledLabel = $enabled ? '<info>ENABLED</info>' : '<comment>DISABLED</comment>';
-
-            $output->writeln('');
-            $output->writeln("Store $storeId: $storeName [$enabledLabel]");
-
-            $table = new Table($output);
-            $table->setHeaders(['Index Name', 'Task ID', 'Created At']);
-
-            foreach ($tasks as $task) {
-                $table->addRow([
-                    $task->getData('index_name'),
-                    $task->getData('task_id'),
-                    $task->getData('created_at'),
-                ]);
-            }
-
-            $table->render();
-        }
+        $enabledLabel = $this->ingestionConfigHelper->isEnabled($storeId)
+            ? '<info>ENABLED</info>'
+            : '<comment>DISABLED</comment>';
 
         $output->writeln('');
-        return Cli::RETURN_SUCCESS;
+        $output->writeln("Store $storeId: $storeName [$enabledLabel]");
+
+        $table = new Table($output);
+        $table->setHeaders(['Index Name', 'Task ID', 'Created At']);
+
+        foreach ($tasks as $task) {
+            $table->addRow([
+                $task->getData('index_name'),
+                $task->getData('task_id'),
+                $task->getData('created_at'),
+            ]);
+        }
+
+        $table->render();
     }
 }

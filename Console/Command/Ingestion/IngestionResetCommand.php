@@ -17,13 +17,13 @@ use Symfony\Component\Console\Output\OutputInterface;
 class IngestionResetCommand extends AbstractIngestionCommand
 {
     public function __construct(
-        protected StoreManagerInterface $storeManager,
+        protected StoreManagerInterface         $storeManager,
         protected IngestionTaskServiceInterface $taskService,
-        protected CollectionFactory $collectionFactory,
-        protected IngestionTaskResource $taskResource,
-        State $state,
-        StoreNameFetcher $storeNameFetcher,
-        ?string $name = null
+        protected CollectionFactory             $collectionFactory,
+        protected IngestionTaskResource         $taskResource,
+        State                                   $state,
+        StoreNameFetcher                        $storeNameFetcher,
+        ?string                                 $name = null
     ) {
         parent::__construct($storeManager, $state, $storeNameFetcher, $name);
     }
@@ -95,6 +95,6 @@ class IngestionResetCommand extends AbstractIngestionCommand
         }
 
         $this->taskService->invalidateByStoreId($storeId);
-        $output->writeln("<info>v Cleared cache for $storeName (store $storeId)</info>");
+        $output->writeln("<info>✓ Cleared cache for $storeName (store $storeId)</info>");
     }
 }

@@ -29,13 +29,13 @@ class IngestionInitCommand extends AbstractIngestionCommand
     ];
 
     public function __construct(
-        protected StoreManagerInterface $storeManager,
+        protected StoreManagerInterface         $storeManager,
         protected IngestionTaskServiceInterface $taskService,
-        protected IndexOptionsBuilder $indexOptionsBuilder,
-        protected IngestionConfigHelper $ingestionConfigHelper,
-        State $state,
-        StoreNameFetcher $storeNameFetcher,
-        ?string $name = null
+        protected IndexOptionsBuilder           $indexOptionsBuilder,
+        protected IngestionConfigHelper         $ingestionConfigHelper,
+        State                                   $state,
+        StoreNameFetcher                        $storeNameFetcher,
+        ?string                                 $name = null
     ) {
         parent::__construct($storeManager, $state, $storeNameFetcher, $name);
     }
@@ -118,10 +118,10 @@ class IngestionInitCommand extends AbstractIngestionCommand
             try {
                 $indexOptions = $this->indexOptionsBuilder->buildWithComputedIndex($suffix, $storeId);
                 $taskId = $this->taskService->getTaskId($indexOptions);
-                $output->writeln("    <info>v</info> {$indexOptions->getIndexName()} -> $taskId");
+                $output->writeln("    <info>✓</info> {$indexOptions->getIndexName()} -> $taskId");
                 $warmed++;
             } catch (\Exception $e) {
-                $output->writeln("    <error>x $suffix: {$e->getMessage()}</error>");
+                $output->writeln("    <error>✗ $suffix: {$e->getMessage()}</error>");
             }
         }
 

@@ -11,9 +11,9 @@ abstract class AbstractIngestionCommand extends AbstractStoreCommand
 {
     public function __construct(
         protected StoreManagerInterface $storeManager,
-        State $state,
-        StoreNameFetcher $storeNameFetcher,
-        ?string $name = null
+        State                           $state,
+        StoreNameFetcher                $storeNameFetcher,
+        ?string                         $name = null
     ) {
         parent::__construct($state, $storeNameFetcher, $name);
     }
