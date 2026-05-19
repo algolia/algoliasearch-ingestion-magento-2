@@ -21,7 +21,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 class IngestionInitCommand extends AbstractIngestionCommand
 {
     /** Standard entity index suffixes to warm on init. Additional sections warm on first push. */
-    private const ENTITY_SUFFIXES = [
+    public const ENTITY_SUFFIXES = [
         ProductHelper::INDEX_NAME_SUFFIX,
         CategoryHelper::INDEX_NAME_SUFFIX,
         PageHelper::INDEX_NAME_SUFFIX,
