@@ -54,7 +54,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
     {
         $storeId = $indexOptions->getStoreId();
         $indexName = $this->resolveProductionIndexName($indexOptions);
-        $indexSuffix = $indexOptions->getIndexSuffix();
+        $entityType = ltrim((string) $indexOptions->getIndexSuffix(), '_') ?: null;
         $cached = $this->loadFromCache($storeId, $indexName);
         if ($cached !== null) {
             return $cached;
@@ -76,8 +76,8 @@ class IngestionTaskService implements IngestionTaskServiceInterface
             $this->taskResource->delete($dbTask);
         }
 
-        $taskId = $this->discoverExistingTask($client, $storeId, $indexName, $indexSuffix)
-            ?? $this->createFullPipeline($client, $storeId, $indexName, $indexSuffix);
+        $taskId = $this->discoverExistingTask($client, $storeId, $indexName, $entityType)
+            ?? $this->createFullPipeline($client, $storeId, $indexName, $entityType);
 
         $this->storeInCache($storeId, $indexName, $taskId);
         return $taskId;
@@ -164,7 +164,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         IngestionClient $client,
         int $storeId,
         string $indexName,
-        ?string $indexSuffix
+        ?string $entityType
     ): ?string {
         $page = 1;
 
@@ -197,7 +197,13 @@ class IngestionTaskService implements IngestionTaskServiceInterface
                 }
 
                 // Destination exists but has no push task - create source + task only
-                return $this->createTaskForExistingDestination($client, $storeId, $indexName, $indexSuffix, $destination);
+                return $this->createTaskForExistingDestination(
+                    $client,
+                    $storeId,
+                    $indexName,
+                    $destination,
+                    $entityType
+                );
             }
 
             $page++;
@@ -221,9 +227,9 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         IngestionClient $client,
         int $storeId,
         string $indexName,
-        ?string $indexSuffix
+        ?string $entityType
     ): string {
-        $sourceId = $this->getSource($client, $storeId, $indexSuffix);
+        $sourceId = $this->getSource($client, $storeId, $entityType);
         $authId   = $this->getAuthentication($client, $storeId);
 
         $destResponse = $client->createDestination([
@@ -305,23 +311,23 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         return $this->getTaskPipelineName($storeId);
     }
 
-    protected function getSource(IngestionClient $client, int $storeId, ?string $indexSuffix): string
+    protected function getSource(IngestionClient $client, int $storeId, ?string $entityType): string
     {
-        $existingId = $this->findExistingSource($client, $storeId, $indexSuffix);
+        $existingId = $this->findExistingSource($client, $storeId, $entityType);
         if ($existingId !== null) {
             return $existingId;
         }
 
         $response = $client->createSource([
             'type' => 'push',
-            'name' => $this->getSourceName($storeId, $indexSuffix),
+            'name' => $this->getSourceName($storeId, $entityType),
         ]);
         return $response['sourceID'];
     }
 
-    protected function findExistingSource(IngestionClient $client, int $storeId, ?string $indexSuffix): ?string
+    protected function findExistingSource(IngestionClient $client, int $storeId, ?string $entityType): ?string
     {
-        $sourceName = $this->getSourceName($storeId, $indexSuffix);
+        $sourceName = $this->getSourceName($storeId, $entityType);
         $page = 1;
 
         do {
@@ -341,13 +347,13 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         return null;
     }
 
-    protected function getSourceName(int $storeId, ?string $indexSuffix): string
+    protected function getSourceName(int $storeId, ?string $entityType): string
     {
-        $entity = ltrim((string) $indexSuffix, '_');
-        if ($entity === '') {
-            return $this->getTaskPipelineName($storeId);
+        $pipelineName = $this->getTaskPipelineName($storeId);
+        if ($entityType === null) {
+            return $pipelineName;
         }
-        return $this->getTaskPipelineName($storeId) . ' - ' . $entity;
+        return $pipelineName . ' - ' . $entityType;
     }
 
     protected function createTask(IngestionClient $client, string $sourceId, string $destId): string
@@ -374,10 +380,10 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         IngestionClient $client,
         int $storeId,
         string $indexName,
-        string $indexSuffix,
-        array $destination
+        array $destination,
+        ?string $entityType = null
     ): string {
-        $sourceId = $this->getSource($client, $storeId, $indexSuffix);
+        $sourceId = $this->getSource($client, $storeId, $entityType);
         $taskId = $this->createTask($client, $sourceId, $destination['destinationID']);
         $this->persistTask(
             $storeId,
