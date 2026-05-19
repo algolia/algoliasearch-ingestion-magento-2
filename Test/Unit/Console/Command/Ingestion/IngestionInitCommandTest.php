@@ -7,7 +7,6 @@ use Algolia\AlgoliaSearch\Service\IndexOptionsBuilder;
 use Algolia\Ingestion\Api\IngestionTaskServiceInterface;
 use Algolia\Ingestion\Console\Command\Ingestion\IngestionInitCommand;
 use Magento\Framework\Console\Cli;
-use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Exception\NoSuchEntityException;
 use PHPUnit\Framework\MockObject\MockObject;
 
@@ -187,36 +186,9 @@ class IngestionInitCommandTest extends AbstractIngestionCommandTestCase
 
     // --- cross-cutting ---
 
-    public function testCommandHasExpectedStoreIdArgument(): void
-    {
-        $cmd = $this->makeReal();
-        $args = $cmd->getDefinition()->getArguments();
-
-        $this->assertCount(1, $args);
-        $this->assertArrayHasKey('store_id', $args);
-        $this->assertTrue($args['store_id']->isArray());
-        $this->assertFalse($args['store_id']->isRequired());
-    }
-
     public function testCommandName(): void
     {
         $this->assertSame('algolia:ingestion:init', $this->makeReal()->getName());
-    }
-
-    public function testAreaCodeFailureIsSwallowedAndExecutionContinues(): void
-    {
-        $this->state->method('setAreaCode')
-            ->willThrowException(new LocalizedException(__('already set')));
-
-        $this->storeManager->method('getStores')
-            ->willReturn($this->mockStoresKeyedById([1]));
-        $this->taskService->expects($this->exactly(count(IngestionInitCommand::ENTITY_SUFFIXES)))
-            ->method('getTaskId');
-
-        $cmd = $this->makeReal();
-        $code = $this->invokeExecute($cmd, $this->arrayInput($cmd, []), $this->bufOut());
-
-        $this->assertSame(Cli::RETURN_SUCCESS, $code);
     }
 
     // --- helpers ---

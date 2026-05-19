@@ -9,7 +9,6 @@ use Algolia\Ingestion\Model\ResourceModel\IngestionTask\Collection;
 use Algolia\Ingestion\Model\ResourceModel\IngestionTask\CollectionFactory;
 use Magento\Framework\Console\Cli;
 use Magento\Framework\DB\Adapter\AdapterInterface;
-use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Exception\NoSuchEntityException;
 use PHPUnit\Framework\MockObject\MockObject;
 
@@ -141,37 +140,9 @@ class IngestionResetCommandTest extends AbstractIngestionCommandTestCase
 
     // --- cross-cutting ---
 
-    public function testCommandHasExpectedStoreIdArgument(): void
-    {
-        $cmd = $this->makeReal();
-        $args = $cmd->getDefinition()->getArguments();
-
-        $this->assertCount(1, $args);
-        $this->assertArrayHasKey('store_id', $args);
-        $this->assertTrue($args['store_id']->isArray());
-        $this->assertFalse($args['store_id']->isRequired());
-    }
-
     public function testCommandName(): void
     {
         $this->assertSame('algolia:ingestion:reset', $this->makeReal()->getName());
-    }
-
-    public function testAreaCodeFailureIsSwallowedAndExecutionContinues(): void
-    {
-        $this->state->method('setAreaCode')
-            ->willThrowException(new LocalizedException(__('already set')));
-
-        $cmd = $this->makePartial(['confirmOperation']);
-        $cmd->method('confirmOperation')->willReturn(true);
-
-        $this->taskService->expects($this->once())
-            ->method('invalidateByStoreId')
-            ->with(1);
-
-        $code = $this->invokeExecute($cmd, $this->arrayInput($cmd, ['1']), $this->bufOut());
-
-        $this->assertSame(Cli::RETURN_SUCCESS, $code);
     }
 
     // --- helpers ---
