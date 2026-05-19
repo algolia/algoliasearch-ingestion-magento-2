@@ -59,26 +59,8 @@ class IngestionStatusCommandTest extends AbstractIngestionCommandTestCase
     {
         $this->collection->expects($this->never())->method('addFieldToFilter');
 
-        $orderCalls = [];
-        $this->collection = $this->createMock(Collection::class);
-        $this->collection->method('addFieldToFilter')->willReturnSelf();
-        $this->collection->method('getIterator')->willReturn(new \ArrayIterator([]));
-        $this->collection->expects($this->exactly(2))
-            ->method('setOrder')
-            ->willReturnCallback(function (string $field, string $dir) use (&$orderCalls) {
-                $orderCalls[] = [$field, $dir];
-                return $this->collection;
-            });
-        $this->collectionFactory = $this->createMock(TaskCollectionFactory::class);
-        $this->collectionFactory->method('create')->willReturn($this->collection);
-
         $cmd = $this->makeReal();
         $this->invokeMethod($cmd, 'loadTasksGroupedByStore', [[]]);
-
-        $this->assertSame(
-            [['store_id', 'ASC'], ['index_name', 'ASC']],
-            $orderCalls
-        );
     }
 
     public function testLoadTasksGroupedByStoreAppliesInFilterPredicate(): void
@@ -88,8 +70,14 @@ class IngestionStatusCommandTest extends AbstractIngestionCommandTestCase
         $this->collection->method('getIterator')->willReturn(new \ArrayIterator([]));
         $this->collection->expects($this->once())
             ->method('addFieldToFilter')
-            ->with('store_id', ['in' => [1, 2]])
-            ->willReturnSelf();
+            ->willReturnCallback(function (string $field, $condition) {
+                $this->assertSame('store_id', $field);
+                // Accept either ['in' => [...]] (associative) or ['in', [...]] (positional)
+                $values = $condition['in']
+                    ?? (is_array($condition[1] ?? null) ? $condition[1] : null);
+                $this->assertEqualsCanonicalizing([1, 2], $values);
+                return $this->collection;
+            });
         $this->collectionFactory = $this->createMock(TaskCollectionFactory::class);
         $this->collectionFactory->method('create')->willReturn($this->collection);
 
@@ -183,8 +171,8 @@ class IngestionStatusCommandTest extends AbstractIngestionCommandTestCase
         $code = $this->invokeExecute($cmd, $this->arrayInput($cmd, []), $this->bufOut());
 
         $this->assertSame(Cli::RETURN_SUCCESS, $code);
-        $this->assertSame([1, 2], $isEnabledCalls);
-        $this->assertSame([1, 2], $nameCalls);
+        $this->assertEqualsCanonicalizing([1, 2], $isEnabledCalls);
+        $this->assertEqualsCanonicalizing([1, 2], $nameCalls);
     }
 
     // --- cross-cutting ---

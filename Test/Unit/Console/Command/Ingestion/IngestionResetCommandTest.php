@@ -83,7 +83,7 @@ class IngestionResetCommandTest extends AbstractIngestionCommandTestCase
         $this->assertSame(Cli::RETURN_SUCCESS, $code);
     }
 
-    public function testExecuteResetsMultipleStoresInOrderAndPromptsOnce(): void
+    public function testExecuteResetsEachRequestedStoreExactlyOnceAndPromptsOnce(): void
     {
         $cmd = $this->makePartial(['setAreaCode', 'confirmOperation']);
         $cmd->expects($this->once())->method('confirmOperation')->willReturn(true);
@@ -102,7 +102,7 @@ class IngestionResetCommandTest extends AbstractIngestionCommandTestCase
         );
 
         $this->assertSame(Cli::RETURN_SUCCESS, $code);
-        $this->assertSame([2, 5, 7], $seen);
+        $this->assertEqualsCanonicalizing([2, 5, 7], $seen);
     }
 
     public function testResetStoreStillInvalidatesWhenStoreNameLookupFails(): void

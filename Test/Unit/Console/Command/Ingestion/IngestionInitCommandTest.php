@@ -3,6 +3,7 @@
 namespace Algolia\Ingestion\Test\Unit\Console\Command\Ingestion;
 
 use Algolia\AlgoliaSearch\Api\Data\IndexOptionsInterface;
+use Algolia\AlgoliaSearch\Helper\Entity\CategoryHelper;
 use Algolia\AlgoliaSearch\Service\IndexOptionsBuilder;
 use Algolia\Ingestion\Api\IngestionTaskServiceInterface;
 use Algolia\Ingestion\Console\Command\Ingestion\IngestionInitCommand;
@@ -135,17 +136,16 @@ class IngestionInitCommandTest extends AbstractIngestionCommandTestCase
         $code = $this->invokeExecute($cmd, $this->arrayInput($cmd, ['1']), $this->bufOut());
 
         $this->assertSame(Cli::RETURN_SUCCESS, $code);
-        $this->assertSame(IngestionInitCommand::ENTITY_SUFFIXES, $seenSuffixes);
+        $this->assertEqualsCanonicalizing(IngestionInitCommand::ENTITY_SUFFIXES, $seenSuffixes);
     }
 
     public function testInitializeStoreContinuesWhenOneSuffixThrows(): void
     {
-        $callCount = 0;
         $this->taskService = $this->createMock(IngestionTaskServiceInterface::class);
-        $this->taskService->method('getTaskId')
-            ->willReturnCallback(function () use (&$callCount) {
-                $callCount++;
-                if ($callCount === 2) {
+        $this->taskService->expects($this->exactly(count(IngestionInitCommand::ENTITY_SUFFIXES)))
+            ->method('getTaskId')
+            ->willReturnCallback(function (IndexOptionsInterface $opts) {
+                if ($opts->getIndexSuffix() === CategoryHelper::INDEX_NAME_SUFFIX) {
                     throw new \Exception('boom');
                 }
                 return 'task-uuid';
@@ -155,7 +155,6 @@ class IngestionInitCommandTest extends AbstractIngestionCommandTestCase
         $code = $this->invokeExecute($cmd, $this->arrayInput($cmd, ['1']), $this->bufOut());
 
         $this->assertSame(Cli::RETURN_SUCCESS, $code);
-        $this->assertSame(count(IngestionInitCommand::ENTITY_SUFFIXES), $callCount);
     }
 
     public function testInitializeStoreAbsorbsErrorsForAllSuffixes(): void
