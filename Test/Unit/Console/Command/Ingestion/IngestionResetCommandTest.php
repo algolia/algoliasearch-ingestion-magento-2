@@ -11,6 +11,8 @@ use Magento\Framework\Console\Cli;
 use Magento\Framework\DB\Adapter\AdapterInterface;
 use Magento\Framework\Exception\NoSuchEntityException;
 use PHPUnit\Framework\MockObject\MockObject;
+use Symfony\Component\Console\Application;
+use Symfony\Component\Console\Tester\CommandTester;
 
 class IngestionResetCommandTest extends AbstractIngestionCommandTestCase
 {
@@ -39,13 +41,14 @@ class IngestionResetCommandTest extends AbstractIngestionCommandTestCase
 
     public function testExecuteReturnsSuccessWhenConfirmationDeclined(): void
     {
-        $cmd = $this->makePartial(['setAreaCode', 'confirmOperation']);
-        $cmd->method('confirmOperation')->willReturn(false);
+        $cmd = $this->makePartial(['setAreaCode']);
 
         $this->connection->expects($this->never())->method('truncateTable');
         $this->taskService->expects($this->never())->method('invalidateByStoreId');
 
-        $code = $this->invokeExecute($cmd, $this->arrayInput($cmd, []), $this->bufOut());
+        $tester = new CommandTester($cmd);
+        $tester->setInputs(['n']);
+        $code = $tester->execute([]);
 
         $this->assertSame(Cli::RETURN_SUCCESS, $code);
     }
@@ -60,10 +63,11 @@ class IngestionResetCommandTest extends AbstractIngestionCommandTestCase
             ->with(IngestionTaskResource::TABLE_NAME);
         $this->taskService->expects($this->never())->method('invalidateByStoreId');
 
-        $cmd = $this->makePartial(['setAreaCode', 'confirmOperation']);
-        $cmd->method('confirmOperation')->willReturn(true);
+        $cmd = $this->makePartial(['setAreaCode']);
 
-        $code = $this->invokeExecute($cmd, $this->arrayInput($cmd, []), $this->bufOut());
+        $tester = new CommandTester($cmd);
+        $tester->setInputs(['y']);
+        $code = $tester->execute([]);
 
         $this->assertSame(Cli::RETURN_SUCCESS, $code);
     }
@@ -75,18 +79,18 @@ class IngestionResetCommandTest extends AbstractIngestionCommandTestCase
             ->method('invalidateByStoreId')
             ->with(1);
 
-        $cmd = $this->makePartial(['setAreaCode', 'confirmOperation']);
-        $cmd->method('confirmOperation')->willReturn(true);
+        $cmd = $this->makePartial(['setAreaCode']);
 
-        $code = $this->invokeExecute($cmd, $this->arrayInput($cmd, ['1']), $this->bufOut());
+        $tester = new CommandTester($cmd);
+        $tester->setInputs(['y']);
+        $code = $tester->execute(['store_id' => ['1']]);
 
         $this->assertSame(Cli::RETURN_SUCCESS, $code);
     }
 
     public function testExecuteResetsEachRequestedStoreExactlyOnceAndPromptsOnce(): void
     {
-        $cmd = $this->makePartial(['setAreaCode', 'confirmOperation']);
-        $cmd->expects($this->once())->method('confirmOperation')->willReturn(true);
+        $cmd = $this->makePartial(['setAreaCode']);
 
         $seen = [];
         $this->taskService->expects($this->exactly(3))
@@ -95,11 +99,11 @@ class IngestionResetCommandTest extends AbstractIngestionCommandTestCase
                 $seen[] = $id;
             });
 
-        $code = $this->invokeExecute(
-            $cmd,
-            $this->arrayInput($cmd, ['2', '5', '7']),
-            $this->bufOut()
-        );
+        $tester = new CommandTester($cmd);
+        // Single 'y' covers the one expected prompt; a second prompt would hang/fail
+        // because no further input is queued — that is what guards the "prompts once" contract.
+        $tester->setInputs(['y']);
+        $code = $tester->execute(['store_id' => ['2', '5', '7']]);
 
         $this->assertSame(Cli::RETURN_SUCCESS, $code);
         $this->assertEqualsCanonicalizing([2, 5, 7], $seen);
@@ -115,10 +119,11 @@ class IngestionResetCommandTest extends AbstractIngestionCommandTestCase
             ->method('invalidateByStoreId')
             ->with(42);
 
-        $cmd = $this->makePartial(['setAreaCode', 'confirmOperation']);
-        $cmd->method('confirmOperation')->willReturn(true);
+        $cmd = $this->makePartial(['setAreaCode']);
 
-        $code = $this->invokeExecute($cmd, $this->arrayInput($cmd, ['42']), $this->bufOut());
+        $tester = new CommandTester($cmd);
+        $tester->setInputs(['y']);
+        $code = $tester->execute(['store_id' => ['42']]);
 
         $this->assertSame(Cli::RETURN_SUCCESS, $code);
     }
@@ -130,10 +135,11 @@ class IngestionResetCommandTest extends AbstractIngestionCommandTestCase
         $this->connection->expects($this->never())->method('truncateTable');
         $this->taskService->expects($this->never())->method('invalidateByStoreId');
 
-        $cmd = $this->makePartial(['setAreaCode', 'confirmOperation']);
-        $cmd->method('confirmOperation')->willReturn(true);
+        $cmd = $this->makePartial(['setAreaCode']);
 
-        $code = $this->invokeExecute($cmd, $this->arrayInput($cmd, ['abc']), $this->bufOut());
+        $tester = new CommandTester($cmd);
+        $tester->setInputs(['y']);
+        $code = $tester->execute(['store_id' => ['abc']]);
 
         $this->assertSame(Cli::RETURN_FAILURE, $code);
     }
@@ -149,7 +155,7 @@ class IngestionResetCommandTest extends AbstractIngestionCommandTestCase
 
     private function makePartial(array $methodsToMock = []): IngestionResetCommand&MockObject
     {
-        return $this->getMockBuilder(IngestionResetCommand::class)
+        $cmd = $this->getMockBuilder(IngestionResetCommand::class)
             ->setConstructorArgs([
                 $this->storeManager,
                 $this->taskService,
@@ -161,6 +167,12 @@ class IngestionResetCommandTest extends AbstractIngestionCommandTestCase
             ])
             ->onlyMethods($methodsToMock)
             ->getMock();
+
+        // Attach an Application so the `question` helper resolves under CommandTester.
+        // CommandTester does not wire HelperSet itself; that comes from Application.
+        $cmd->setApplication(new Application());
+
+        return $cmd;
     }
 
     private function makeReal(): IngestionResetCommand

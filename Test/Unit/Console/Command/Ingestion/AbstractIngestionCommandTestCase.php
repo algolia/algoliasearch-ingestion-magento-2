@@ -9,9 +9,6 @@ use Magento\Framework\App\State;
 use Magento\Store\Api\Data\StoreInterface;
 use Magento\Store\Model\StoreManagerInterface;
 use PHPUnit\Framework\MockObject\MockObject;
-use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Input\ArrayInput;
-use Symfony\Component\Console\Output\BufferedOutput;
 
 abstract class AbstractIngestionCommandTestCase extends TestCase
 {
@@ -31,27 +28,6 @@ abstract class AbstractIngestionCommandTestCase extends TestCase
             ->willReturnCallback(fn(int $id) => "Store $id");
     }
 
-    protected function bufOut(): BufferedOutput
-    {
-        return new BufferedOutput();
-    }
-
-    /**
-     * Build an ArrayInput with `store_id` positional args, pre-bound to the command's definition
-     * so reflection-invoked execute() can call $input->getArgument() correctly.
-     *
-     * @param string[] $storeIds
-     */
-    protected function arrayInput(Command $command, array $storeIds = []): ArrayInput
-    {
-        $input = new ArrayInput(
-            $storeIds === [] ? [] : ['store_id' => $storeIds]
-        );
-        $input->bind($command->getDefinition());
-
-        return $input;
-    }
-
     /**
      * Build a mock StoreManagerInterface::getStores() return shape: store_id keyed array
      * of StoreInterface mocks. IngestionInitCommand uses `array_keys()` on this.
@@ -68,13 +44,5 @@ abstract class AbstractIngestionCommandTestCase extends TestCase
             $out[$id] = $store;
         }
         return $out;
-    }
-
-    /**
-     * @throws \ReflectionException
-     */
-    protected function invokeExecute(Command $cmd, ArrayInput $input, BufferedOutput $output): int
-    {
-        return $this->invokeMethod($cmd, 'execute', [$input, $output]);
     }
 }

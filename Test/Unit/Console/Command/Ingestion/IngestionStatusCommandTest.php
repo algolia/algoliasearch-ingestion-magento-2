@@ -9,6 +9,7 @@ use Algolia\Ingestion\Model\ResourceModel\IngestionTask\CollectionFactory as Tas
 use Magento\Framework\Console\Cli;
 use Magento\Framework\Exception\NoSuchEntityException;
 use PHPUnit\Framework\MockObject\MockObject;
+use Symfony\Component\Console\Tester\CommandTester;
 
 class IngestionStatusCommandTest extends AbstractIngestionCommandTestCase
 {
@@ -37,7 +38,7 @@ class IngestionStatusCommandTest extends AbstractIngestionCommandTestCase
         $this->collectionFactory->expects($this->never())->method('create');
 
         $cmd = $this->makePartial(['setAreaCode']);
-        $code = $this->invokeExecute($cmd, $this->arrayInput($cmd, ['abc']), $this->bufOut());
+        $code = (new CommandTester($cmd))->execute(['store_id' => ['abc']]);
 
         $this->assertSame(Cli::RETURN_FAILURE, $code);
     }
@@ -48,7 +49,7 @@ class IngestionStatusCommandTest extends AbstractIngestionCommandTestCase
         $this->ingestionConfigHelper->expects($this->never())->method('isEnabled');
 
         $cmd = $this->makePartial(['setAreaCode']);
-        $code = $this->invokeExecute($cmd, $this->arrayInput($cmd, []), $this->bufOut());
+        $code = (new CommandTester($cmd))->execute([]);
 
         $this->assertSame(Cli::RETURN_SUCCESS, $code);
     }
@@ -131,7 +132,7 @@ class IngestionStatusCommandTest extends AbstractIngestionCommandTestCase
         $this->collectionFactory->method('create')->willReturn($this->collection);
 
         $cmd = $this->makePartial(['setAreaCode']);
-        $code = $this->invokeExecute($cmd, $this->arrayInput($cmd, []), $this->bufOut());
+        $code = (new CommandTester($cmd))->execute([]);
 
         $this->assertSame(Cli::RETURN_SUCCESS, $code);
     }
@@ -168,7 +169,7 @@ class IngestionStatusCommandTest extends AbstractIngestionCommandTestCase
             });
 
         $cmd = $this->makePartial(['setAreaCode']);
-        $code = $this->invokeExecute($cmd, $this->arrayInput($cmd, []), $this->bufOut());
+        $code = (new CommandTester($cmd))->execute([]);
 
         $this->assertSame(Cli::RETURN_SUCCESS, $code);
         $this->assertEqualsCanonicalizing([1, 2], $isEnabledCalls);

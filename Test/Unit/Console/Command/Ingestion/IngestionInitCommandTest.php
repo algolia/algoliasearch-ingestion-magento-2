@@ -10,6 +10,7 @@ use Algolia\Ingestion\Console\Command\Ingestion\IngestionInitCommand;
 use Magento\Framework\Console\Cli;
 use Magento\Framework\Exception\NoSuchEntityException;
 use PHPUnit\Framework\MockObject\MockObject;
+use Symfony\Component\Console\Tester\CommandTester;
 
 class IngestionInitCommandTest extends AbstractIngestionCommandTestCase
 {
@@ -43,7 +44,7 @@ class IngestionInitCommandTest extends AbstractIngestionCommandTestCase
             ->method('getTaskId');
 
         $cmd = $this->makePartial(['setAreaCode']);
-        $code = $this->invokeExecute($cmd, $this->arrayInput($cmd, []), $this->bufOut());
+        $code = (new CommandTester($cmd))->execute([]);
 
         $this->assertSame(Cli::RETURN_SUCCESS, $code);
     }
@@ -61,7 +62,7 @@ class IngestionInitCommandTest extends AbstractIngestionCommandTestCase
             });
 
         $cmd = $this->makePartial(['setAreaCode']);
-        $code = $this->invokeExecute($cmd, $this->arrayInput($cmd, ['1', '3']), $this->bufOut());
+        $code = (new CommandTester($cmd))->execute(['store_id' => ['1', '3']]);
 
         $this->assertSame(Cli::RETURN_SUCCESS, $code);
         $this->assertSame([1, 3], array_values(array_unique($seenStoreIds)));
@@ -74,8 +75,7 @@ class IngestionInitCommandTest extends AbstractIngestionCommandTestCase
         $this->storeManager->expects($this->never())->method('getStores');
 
         $cmd = $this->makePartial(['setAreaCode']);
-        $output = $this->bufOut();
-        $code = $this->invokeExecute($cmd, $this->arrayInput($cmd, ['abc']), $output);
+        $code = (new CommandTester($cmd))->execute(['store_id' => ['abc']]);
 
         $this->assertSame(Cli::RETURN_FAILURE, $code);
     }
@@ -99,7 +99,7 @@ class IngestionInitCommandTest extends AbstractIngestionCommandTestCase
             ->method('getTaskId');
 
         $cmd = $this->makePartial(['setAreaCode']);
-        $code = $this->invokeExecute($cmd, $this->arrayInput($cmd, ['9', '1']), $this->bufOut());
+        $code = (new CommandTester($cmd))->execute(['store_id' => ['9', '1']]);
 
         $this->assertSame(Cli::RETURN_SUCCESS, $code);
     }
@@ -114,7 +114,7 @@ class IngestionInitCommandTest extends AbstractIngestionCommandTestCase
             ->method('getTaskId');
 
         $cmd = $this->makePartial(['setAreaCode']);
-        $code = $this->invokeExecute($cmd, $this->arrayInput($cmd, ['2', '1']), $this->bufOut());
+        $code = (new CommandTester($cmd))->execute(['store_id' => ['2', '1']]);
 
         $this->assertSame(Cli::RETURN_SUCCESS, $code);
     }
@@ -133,7 +133,7 @@ class IngestionInitCommandTest extends AbstractIngestionCommandTestCase
             ->method('getTaskId');
 
         $cmd = $this->makePartial(['setAreaCode']);
-        $code = $this->invokeExecute($cmd, $this->arrayInput($cmd, ['1']), $this->bufOut());
+        $code = (new CommandTester($cmd))->execute(['store_id' => ['1']]);
 
         $this->assertSame(Cli::RETURN_SUCCESS, $code);
         $this->assertEqualsCanonicalizing(IngestionInitCommand::ENTITY_SUFFIXES, $seenSuffixes);
@@ -152,7 +152,7 @@ class IngestionInitCommandTest extends AbstractIngestionCommandTestCase
             });
 
         $cmd = $this->makePartial(['setAreaCode']);
-        $code = $this->invokeExecute($cmd, $this->arrayInput($cmd, ['1']), $this->bufOut());
+        $code = (new CommandTester($cmd))->execute(['store_id' => ['1']]);
 
         $this->assertSame(Cli::RETURN_SUCCESS, $code);
     }
@@ -165,7 +165,7 @@ class IngestionInitCommandTest extends AbstractIngestionCommandTestCase
             ->willThrowException(new \Exception('always fails'));
 
         $cmd = $this->makePartial(['setAreaCode']);
-        $code = $this->invokeExecute($cmd, $this->arrayInput($cmd, ['1']), $this->bufOut());
+        $code = (new CommandTester($cmd))->execute(['store_id' => ['1']]);
 
         $this->assertSame(Cli::RETURN_SUCCESS, $code);
     }
@@ -178,7 +178,7 @@ class IngestionInitCommandTest extends AbstractIngestionCommandTestCase
         $this->taskService->expects($this->never())->method('getTaskId');
 
         $cmd = $this->makePartial(['setAreaCode']);
-        $code = $this->invokeExecute($cmd, $this->arrayInput($cmd, []), $this->bufOut());
+        $code = (new CommandTester($cmd))->execute([]);
 
         $this->assertSame(Cli::RETURN_SUCCESS, $code);
     }
