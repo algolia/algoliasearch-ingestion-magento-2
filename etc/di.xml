@@ -17,6 +17,12 @@
         </arguments>
     </type>
 
+    <!-- Invalidates task cache when an index is deleted -->
+    <type name="Algolia\AlgoliaSearch\Service\AlgoliaConnector">
+        <plugin name="algolia_ingestion_index_deletion"
+                type="Algolia\Ingestion\Plugin\IndexDeletionPlugin" />
+    </type>
+
     <!-- CLI commands -->
     <type name="Magento\Framework\Console\CommandListInterface">
         <arguments>
