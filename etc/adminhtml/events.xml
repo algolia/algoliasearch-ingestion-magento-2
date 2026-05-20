@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Event/etc/events.xsd">
+    <event name="admin_system_config_changed_section_algoliasearch_credentials">
+        <observer name="algolia_ingestion_credentials_changed"
+                  instance="Algolia\Ingestion\Observer\CredentialChangeObserver" />
+    </event>
+</config>
