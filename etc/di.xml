@@ -38,18 +38,21 @@
          store/website resolution during setup:install -->
     <type name="Algolia\Ingestion\Console\Command\Ingestion\IngestionStatusCommand">
         <arguments>
+            <argument name="storeManager" xsi:type="object">Magento\Store\Model\StoreManagerInterface\Proxy</argument>
             <argument name="ingestionConfigHelper" xsi:type="object">Algolia\Ingestion\Helper\IngestionConfigHelper\Proxy</argument>
             <argument name="storeNameFetcher" xsi:type="object">Algolia\AlgoliaSearch\Service\StoreNameFetcher\Proxy</argument>
         </arguments>
     </type>
     <type name="Algolia\Ingestion\Console\Command\Ingestion\IngestionInitCommand">
         <arguments>
+            <argument name="storeManager" xsi:type="object">Magento\Store\Model\StoreManagerInterface\Proxy</argument>
             <argument name="ingestionConfigHelper" xsi:type="object">Algolia\Ingestion\Helper\IngestionConfigHelper\Proxy</argument>
             <argument name="storeNameFetcher" xsi:type="object">Algolia\AlgoliaSearch\Service\StoreNameFetcher\Proxy</argument>
         </arguments>
     </type>
     <type name="Algolia\Ingestion\Console\Command\Ingestion\IngestionResetCommand">
         <arguments>
+            <argument name="storeManager" xsi:type="object">Magento\Store\Model\StoreManagerInterface\Proxy</argument>
             <argument name="storeNameFetcher" xsi:type="object">Algolia\AlgoliaSearch\Service\StoreNameFetcher\Proxy</argument>
         </arguments>
     </type>
