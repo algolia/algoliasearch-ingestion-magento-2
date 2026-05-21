@@ -39,20 +39,21 @@
     <type name="Algolia\Ingestion\Console\Command\Ingestion\IngestionStatusCommand">
         <arguments>
             <argument name="storeManager" xsi:type="object">Magento\Store\Model\StoreManagerInterface\Proxy</argument>
-            <argument name="ingestionConfigHelper" xsi:type="object">Algolia\Ingestion\Helper\IngestionConfigHelper\Proxy</argument>
             <argument name="storeNameFetcher" xsi:type="object">Algolia\AlgoliaSearch\Service\StoreNameFetcher\Proxy</argument>
         </arguments>
     </type>
     <type name="Algolia\Ingestion\Console\Command\Ingestion\IngestionInitCommand">
         <arguments>
             <argument name="storeManager" xsi:type="object">Magento\Store\Model\StoreManagerInterface\Proxy</argument>
-            <argument name="ingestionConfigHelper" xsi:type="object">Algolia\Ingestion\Helper\IngestionConfigHelper\Proxy</argument>
+            <argument name="taskService" xsi:type="object">Algolia\Ingestion\Api\IngestionTaskServiceInterface\Proxy</argument>
+            <argument name="indexOptionsBuilder" xsi:type="object">Algolia\AlgoliaSearch\Service\IndexOptionsBuilder\Proxy</argument>
             <argument name="storeNameFetcher" xsi:type="object">Algolia\AlgoliaSearch\Service\StoreNameFetcher\Proxy</argument>
         </arguments>
     </type>
     <type name="Algolia\Ingestion\Console\Command\Ingestion\IngestionResetCommand">
         <arguments>
             <argument name="storeManager" xsi:type="object">Magento\Store\Model\StoreManagerInterface\Proxy</argument>
+            <argument name="taskService" xsi:type="object">Algolia\Ingestion\Api\IngestionTaskServiceInterface\Proxy</argument>
             <argument name="storeNameFetcher" xsi:type="object">Algolia\AlgoliaSearch\Service\StoreNameFetcher\Proxy</argument>
         </arguments>
     </type>
