@@ -27,4 +27,24 @@
             </argument>
         </arguments>
     </type>
+
+    <!-- Proxy store-touching dependencies on Console commands to avoid premature
+         store/website resolution during setup:install -->
+    <type name="Algolia\Ingestion\Console\Command\Ingestion\IngestionStatusCommand">
+        <arguments>
+            <argument name="ingestionConfigHelper" xsi:type="object">Algolia\Ingestion\Helper\IngestionConfigHelper\Proxy</argument>
+            <argument name="storeNameFetcher" xsi:type="object">Algolia\AlgoliaSearch\Service\StoreNameFetcher\Proxy</argument>
+        </arguments>
+    </type>
+    <type name="Algolia\Ingestion\Console\Command\Ingestion\IngestionInitCommand">
+        <arguments>
+            <argument name="ingestionConfigHelper" xsi:type="object">Algolia\Ingestion\Helper\IngestionConfigHelper\Proxy</argument>
+            <argument name="storeNameFetcher" xsi:type="object">Algolia\AlgoliaSearch\Service\StoreNameFetcher\Proxy</argument>
+        </arguments>
+    </type>
+    <type name="Algolia\Ingestion\Console\Command\Ingestion\IngestionResetCommand">
+        <arguments>
+            <argument name="storeNameFetcher" xsi:type="object">Algolia\AlgoliaSearch\Service\StoreNameFetcher\Proxy</argument>
+        </arguments>
+    </type>
 </config>
