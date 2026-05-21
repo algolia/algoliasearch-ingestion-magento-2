@@ -407,7 +407,7 @@ class IngestionTaskServiceTest extends TestCase
             ->willReturn([
                 'sources' => [[
                     'sourceID' => self::SOURCE_ID,
-                    'name' => 'Magento (Store ' . self::STORE_ID . ')',
+                    'name' => 'Magento (Store ' . self::STORE_ID . ') - products',
                 ]],
                 'pagination' => ['nbPages' => 1],
             ]);
@@ -615,12 +615,14 @@ class IngestionTaskServiceTest extends TestCase
     private function mockIndexOptions(
         int $storeId = self::STORE_ID,
         string $indexName = self::INDEX_NAME,
-        bool $isTemporaryIndex = false
+        bool $isTemporaryIndex = false,
+        ?string $indexSuffix = '_products'
     ): IndexOptionsInterface&MockObject {
         $mock = $this->createMock(IndexOptionsInterface::class);
         $mock->method('getStoreId')->willReturn($storeId);
         $mock->method('getIndexName')->willReturn($indexName);
         $mock->method('isTemporaryIndex')->willReturn($isTemporaryIndex);
+        $mock->method('getIndexSuffix')->willReturn($indexSuffix);
         return $mock;
     }
 

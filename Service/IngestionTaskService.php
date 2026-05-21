@@ -54,6 +54,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
     {
         $storeId = $indexOptions->getStoreId();
         $indexName = $this->resolveProductionIndexName($indexOptions);
+        $entityType = ltrim((string) $indexOptions->getIndexSuffix(), '_') ?: null;
         $cached = $this->loadFromCache($storeId, $indexName);
         if ($cached !== null) {
             return $cached;
@@ -75,8 +76,8 @@ class IngestionTaskService implements IngestionTaskServiceInterface
             $this->taskResource->delete($dbTask);
         }
 
-        $taskId = $this->discoverExistingTask($client, $storeId, $indexName)
-            ?? $this->createFullPipeline($client, $storeId, $indexName);
+        $taskId = $this->discoverExistingTask($client, $storeId, $indexName, $entityType)
+            ?? $this->createFullPipeline($client, $storeId, $indexName, $entityType);
 
         $this->storeInCache($storeId, $indexName, $taskId);
         return $taskId;
@@ -140,7 +141,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         try {
             $client->getTask($taskId);
             return true;
-        } catch (NotFoundException $e) {
+        } catch (NotFoundException) {
             // NotFoundException (HTTP 404) is thrown by ApiWrapper when the Algolia API returns a 404 response.
             // This means the task no longer exists in the Ingestion API, so the caller should discard the
             // stale reference and discover or create a new one.
@@ -157,9 +158,14 @@ class IngestionTaskService implements IngestionTaskServiceInterface
      * are created against the existing destination (reusing any merchant
      * transformations attached to it).
      * @throws AlreadyExistsException
+     * @throws AlgoliaException
      */
-    protected function discoverExistingTask(IngestionClient $client, int $storeId, string $indexName): ?string
-    {
+    protected function discoverExistingTask(
+        IngestionClient $client,
+        int $storeId,
+        string $indexName,
+        ?string $entityType
+    ): ?string {
         $page = 1;
 
         do {
@@ -191,7 +197,13 @@ class IngestionTaskService implements IngestionTaskServiceInterface
                 }
 
                 // Destination exists but has no push task - create source + task only
-                return $this->createTaskForExistingDestination($client, $storeId, $indexName, $destination);
+                return $this->createTaskForExistingDestination(
+                    $client,
+                    $storeId,
+                    $indexName,
+                    $destination,
+                    $entityType
+                );
             }
 
             $page++;
@@ -211,9 +223,13 @@ class IngestionTaskService implements IngestionTaskServiceInterface
      * given store and index. Returns the new task UUID.
      * @throws AlreadyExistsException
      */
-    protected function createFullPipeline(IngestionClient $client, int $storeId, string $indexName): string
-    {
-        $sourceId = $this->getSource($client, $storeId);
+    protected function createFullPipeline(
+        IngestionClient $client,
+        int $storeId,
+        string $indexName,
+        ?string $entityType
+    ): string {
+        $sourceId = $this->getSource($client, $storeId, $entityType);
         $authId   = $this->getAuthentication($client, $storeId);
 
         $destResponse = $client->createDestination([
@@ -246,7 +262,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
 
     protected function getDestinationName(int $storeId, string $indexName): string
     {
-        return $this->getTaskPipelineName($storeId, $indexName) . ' - ' . $indexName;
+        return $this->getTaskPipelineName($storeId) . ' - ' . $indexName;
     }
 
     protected function getAuthentication(IngestionClient $client, int $storeId): string
@@ -295,23 +311,23 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         return $this->getTaskPipelineName($storeId);
     }
 
-    protected function getSource(IngestionClient $client, int $storeId): string
+    protected function getSource(IngestionClient $client, int $storeId, ?string $entityType): string
     {
-        $existingId = $this->findExistingSource($client, $storeId);
+        $existingId = $this->findExistingSource($client, $storeId, $entityType);
         if ($existingId !== null) {
             return $existingId;
         }
 
         $response = $client->createSource([
             'type' => 'push',
-            'name' => $this->getSourceName($storeId),
+            'name' => $this->getSourceName($storeId, $entityType),
         ]);
         return $response['sourceID'];
     }
 
-    protected function findExistingSource(IngestionClient $client, int $storeId): ?string
+    protected function findExistingSource(IngestionClient $client, int $storeId, ?string $entityType): ?string
     {
-        $sourceName = $this->getSourceName($storeId);
+        $sourceName = $this->getSourceName($storeId, $entityType);
         $page = 1;
 
         do {
@@ -331,9 +347,13 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         return null;
     }
 
-    protected function getSourceName(int $storeId): string
+    protected function getSourceName(int $storeId, ?string $entityType): string
     {
-        return $this->getTaskPipelineName($storeId);
+        $pipelineName = $this->getTaskPipelineName($storeId);
+        if ($entityType === null) {
+            return $pipelineName;
+        }
+        return $pipelineName . ' - ' . $entityType;
     }
 
     protected function createTask(IngestionClient $client, string $sourceId, string $destId): string
@@ -355,15 +375,15 @@ class IngestionTaskService implements IngestionTaskServiceInterface
      * persist the record, and return the new task UUID.
      *
      * @throws AlreadyExistsException
-     * @throws AlgoliaException
      */
     protected function createTaskForExistingDestination(
         IngestionClient $client,
         int $storeId,
         string $indexName,
-        array $destination
+        array $destination,
+        ?string $entityType = null
     ): string {
-        $sourceId = $this->getSource($client, $storeId);
+        $sourceId = $this->getSource($client, $storeId, $entityType);
         $taskId = $this->createTask($client, $sourceId, $destination['destinationID']);
         $this->persistTask(
             $storeId,
@@ -414,7 +434,6 @@ class IngestionTaskService implements IngestionTaskServiceInterface
      * return the task UUID. Requires a separate GET request because listTasks does not return destination details.
      *
      * @throws AlreadyExistsException
-     * @throws AlgoliaException
      */
     protected function persistDiscoveredTask(
         IngestionClient $client,
