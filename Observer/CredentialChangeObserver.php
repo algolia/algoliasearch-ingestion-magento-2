@@ -11,6 +11,12 @@ class CredentialChangeObserver implements ObserverInterface
 {
     use AffectedStoreResolverTrait;
 
+    public const WATCHED_PATHS = [
+        'algoliasearch_credentials/credentials/application_id',
+        'algoliasearch_credentials/credentials/api_key',
+        'algoliasearch_credentials/credentials/index_prefix'
+    ];
+
     public function __construct(
         protected IngestionTaskServiceInterface $taskService,
         protected StoreManagerInterface         $storeManager
@@ -18,8 +24,16 @@ class CredentialChangeObserver implements ObserverInterface
 
     public function execute(Observer $observer): void
     {
+        if (!$this->eventTouchesWatchedPaths($observer)) {
+            return;
+        }
         foreach ($this->resolveAffectedStoreIds($observer) as $storeId) {
             $this->taskService->invalidateByStoreId($storeId);
         }
+    }
+
+    protected function getWatchedPaths(): array
+    {
+        return self::WATCHED_PATHS;
     }
 }

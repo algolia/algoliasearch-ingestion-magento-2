@@ -13,6 +13,9 @@ use PHPUnit\Framework\MockObject\MockObject;
 
 class IngestionConfigChangeObserverTest extends TestCase
 {
+    private const WATCHED_PATH = 'algoliasearch_indexing_manager/ingestion/region';
+    private const UNWATCHED_PATH = 'algoliasearch_indexing_manager/ingestion/fallback_to_batch';
+
     private null|(IngestionTaskServiceInterface&MockObject) $taskService = null;
     private null|(StoreManagerInterface&MockObject) $storeManager = null;
     private ?IngestionConfigChangeObserver $observer = null;
@@ -32,7 +35,11 @@ class IngestionConfigChangeObserverTest extends TestCase
 
     public function testExecuteInvalidatesSpecificStore(): void
     {
-        $magentoObserver = $this->mockObserver(['store' => '1', 'website' => '']);
+        $magentoObserver = $this->mockObserver([
+            'store' => '1',
+            'website' => '',
+            'changed_paths' => [self::WATCHED_PATH],
+        ]);
 
         $this->taskService->expects($this->once())
             ->method('invalidateByStoreId')
@@ -48,7 +55,11 @@ class IngestionConfigChangeObserverTest extends TestCase
 
     public function testExecuteInvalidatesWebsiteStoresOnWebsiteScope(): void
     {
-        $magentoObserver = $this->mockObserver(['store' => '', 'website' => '1']);
+        $magentoObserver = $this->mockObserver([
+            'store' => '',
+            'website' => '1',
+            'changed_paths' => [self::WATCHED_PATH],
+        ]);
 
         $this->storeManager->expects($this->once())
             ->method('getStores')
@@ -74,7 +85,11 @@ class IngestionConfigChangeObserverTest extends TestCase
 
     public function testExecuteInvalidatesAllStoresOnDefaultScope(): void
     {
-        $magentoObserver = $this->mockObserver(['store' => '', 'website' => '']);
+        $magentoObserver = $this->mockObserver([
+            'store' => '',
+            'website' => '',
+            'changed_paths' => [self::WATCHED_PATH],
+        ]);
 
         $this->storeManager->expects($this->once())
             ->method('getStores')
@@ -85,6 +100,50 @@ class IngestionConfigChangeObserverTest extends TestCase
 
         $this->taskService->expects($this->exactly(2))
             ->method('invalidateByStoreId');
+
+        $this->observer->execute($magentoObserver);
+    }
+
+    // --- changed_paths filtering ---
+
+    public function testSkipsWhenChangedPathsMissing(): void
+    {
+        $magentoObserver = $this->mockObserver(['store' => '1', 'website' => '']);
+
+        $this->taskService->expects($this->never())->method('invalidateByStoreId');
+        $this->storeManager->expects($this->never())->method('getStores');
+
+        $this->observer->execute($magentoObserver);
+    }
+
+    public function testSkipsWhenNoWatchedPathChanged(): void
+    {
+        $magentoObserver = $this->mockObserver([
+            'store' => '1',
+            'website' => '',
+            'changed_paths' => [self::UNWATCHED_PATH],
+        ]);
+
+        $this->taskService->expects($this->never())->method('invalidateByStoreId');
+        $this->storeManager->expects($this->never())->method('getStores');
+
+        $this->observer->execute($magentoObserver);
+    }
+
+    public function testInvalidatesWhenAnyWatchedPathPresent(): void
+    {
+        $magentoObserver = $this->mockObserver([
+            'store' => '1',
+            'website' => '',
+            'changed_paths' => [
+                self::UNWATCHED_PATH,
+                self::WATCHED_PATH,
+            ],
+        ]);
+
+        $this->taskService->expects($this->once())
+            ->method('invalidateByStoreId')
+            ->with(1);
 
         $this->observer->execute($magentoObserver);
     }
