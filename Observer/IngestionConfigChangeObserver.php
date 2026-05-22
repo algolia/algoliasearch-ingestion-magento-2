@@ -32,16 +32,11 @@ class IngestionConfigChangeObserver implements ObserverInterface
 
     public function execute(Observer $observer): void
     {
-        if (!$this->eventTouchesWatchedPaths($observer)) {
+        if (!$this->eventTouchesWatchedPaths($observer, self::WATCHED_PATHS)) {
             return;
         }
         foreach ($this->resolveAffectedStoreIds($observer) as $storeId) {
             $this->taskService->invalidateByStoreId($storeId);
         }
-    }
-
-    protected function getWatchedPaths(): array
-    {
-        return self::WATCHED_PATHS;
     }
 }

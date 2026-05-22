@@ -7,6 +7,17 @@ use Magento\Framework\Event\Observer;
 use Magento\Framework\Event\ObserverInterface;
 use Magento\Store\Model\StoreManagerInterface;
 
+/**
+ * Invalidates persisted ingestion task UUIDs when a watched field under the
+ * Algolia Credentials section is saved.
+ *
+ * Task UUIDs are scoped to the (application ID + destination index name) pair on
+ * the Algolia side, so changing `application_id` (different organization),
+ * `api_key` (admin key rotation against a different app), or `index_prefix`
+ * (destination index names change) renders any cached UUID stale. The
+ * `changed_paths` event data lets us skip the invalidation when only unrelated
+ * fields (`search_only_api_key`, `debug`, cookie configuration) were touched.
+ */
 class CredentialChangeObserver implements ObserverInterface
 {
     use AffectedStoreResolverTrait;
@@ -24,16 +35,11 @@ class CredentialChangeObserver implements ObserverInterface
 
     public function execute(Observer $observer): void
     {
-        if (!$this->eventTouchesWatchedPaths($observer)) {
+        if (!$this->eventTouchesWatchedPaths($observer, self::WATCHED_PATHS)) {
             return;
         }
         foreach ($this->resolveAffectedStoreIds($observer) as $storeId) {
             $this->taskService->invalidateByStoreId($storeId);
         }
-    }
-
-    protected function getWatchedPaths(): array
-    {
-        return self::WATCHED_PATHS;
     }
 }
