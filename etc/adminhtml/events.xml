@@ -5,4 +5,8 @@
         <observer name="algolia_ingestion_credentials_changed"
                   instance="Algolia\Ingestion\Observer\CredentialChangeObserver" />
     </event>
+    <event name="admin_system_config_changed_section_algoliasearch_indexing_manager">
+        <observer name="algolia_ingestion_config_changed"
+                  instance="Algolia\Ingestion\Observer\IngestionConfigChangeObserver" />
+    </event>
 </config>
