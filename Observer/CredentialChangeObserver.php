@@ -9,6 +9,8 @@ use Magento\Store\Model\StoreManagerInterface;
 
 class CredentialChangeObserver implements ObserverInterface
 {
+    use AffectedStoreResolverTrait;
+
     public function __construct(
         protected IngestionTaskServiceInterface $taskService,
         protected StoreManagerInterface         $storeManager
@@ -16,20 +18,8 @@ class CredentialChangeObserver implements ObserverInterface
 
     public function execute(Observer $observer): void
     {
-        $storeId   = $observer->getEvent()->getData('store');
-        $websiteId = $observer->getEvent()->getData('website');
-
-        if ($storeId) {
-            $this->taskService->invalidateByStoreId((int) $storeId);
-            return;
-        }
-
-        $websiteIdFilter = $websiteId ? (int) $websiteId : null;
-        foreach ($this->storeManager->getStores() as $store) {
-            if ($websiteIdFilter !== null && (int) $store->getWebsiteId() !== $websiteIdFilter) {
-                continue;
-            }
-            $this->taskService->invalidateByStoreId((int) $store->getId());
+        foreach ($this->resolveAffectedStoreIds($observer) as $storeId) {
+            $this->taskService->invalidateByStoreId($storeId);
         }
     }
 }
