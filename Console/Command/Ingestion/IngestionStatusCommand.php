@@ -123,11 +123,13 @@ class IngestionStatusCommand extends AbstractIngestionCommand
         $output->writeln("Store $storeId: $storeName [$enabledLabel]");
 
         $table = new Table($output);
-        $table->setHeaders(['Index Name', 'Task ID', 'Created At']);
+        $table->setHeaders(['Index Name', 'Originated by', 'Task ID', 'Created At']);
 
         foreach ($tasks as $task) {
+            $originated = $task->getData('is_magento_originated') ? 'Magento' : 'Algolia';
             $table->addRow([
                 $task->getData('index_name'),
+                $originated,
                 $task->getData('task_id'),
                 $task->getData('created_at'),
             ]);

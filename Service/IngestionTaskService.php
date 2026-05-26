@@ -241,7 +241,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         $destId = $destResponse['destinationID'];
 
         $taskId = $this->createTask($client, $sourceId, $destId);
-        $this->persistTask($storeId, $indexName, $taskId, $sourceId, $destId, $authId);
+        $this->persistTask($storeId, $indexName, $taskId, $sourceId, $destId, $authId, true);
 
         $this->logger->info('Created full ingestion pipeline for {indexName} (store {storeId})', [
             'storeId'          => $storeId,
@@ -263,6 +263,11 @@ class IngestionTaskService implements IngestionTaskServiceInterface
     protected function getDestinationName(int $storeId, string $indexName): string
     {
         return $this->getTaskPipelineName($storeId) . ' - ' . $indexName;
+    }
+
+    protected function isMagentoOriginatedDestination(array $destination, int $storeId, string $indexName): bool
+    {
+        return ($destination['name'] ?? null) === $this->getDestinationName($storeId, $indexName);
     }
 
     protected function getAuthentication(IngestionClient $client, int $storeId): string
@@ -385,22 +390,25 @@ class IngestionTaskService implements IngestionTaskServiceInterface
     ): string {
         $sourceId = $this->getSource($client, $storeId, $entityType);
         $taskId = $this->createTask($client, $sourceId, $destination['destinationID']);
+        $isMagentoOriginated = $this->isMagentoOriginatedDestination($destination, $storeId, $indexName);
         $this->persistTask(
             $storeId,
             $indexName,
             $taskId,
             $sourceId,
             $destination['destinationID'],
-            $destination['authenticationID']
+            $destination['authenticationID'],
+            $isMagentoOriginated
         );
 
         $this->logger->info('Created ingestion task for existing destination for {indexName} (store {storeId})', [
-            'storeId'          => $storeId,
-            'indexName'        => $indexName,
-            'taskId'           => $taskId,
-            'sourceId'         => $sourceId,
-            'destinationId'    => $destination['destinationID'],
-            'authenticationId' => $destination['authenticationID'],
+            'storeId'             => $storeId,
+            'indexName'           => $indexName,
+            'taskId'              => $taskId,
+            'sourceId'            => $sourceId,
+            'destinationId'       => $destination['destinationID'],
+            'authenticationId'    => $destination['authenticationID'],
+            'isMagentoOriginated' => $isMagentoOriginated,
         ]);
 
         return $taskId;
@@ -415,16 +423,18 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         string $taskId,
         ?string $sourceId,
         ?string $destinationId,
-        ?string $authenticationId = null
+        ?string $authenticationId = null,
+        bool $isMagentoOriginated = true
     ): void {
         $task = $this->taskFactory->create();
         $task->setData([
-            'store_id'          => $storeId,
-            'index_name'        => $indexName,
-            'task_id'           => $taskId,
-            'source_id'         => $sourceId,
-            'destination_id'    => $destinationId,
-            'authentication_id' => $authenticationId,
+            'store_id'              => $storeId,
+            'index_name'            => $indexName,
+            'task_id'               => $taskId,
+            'source_id'             => $sourceId,
+            'destination_id'        => $destinationId,
+            'authentication_id'     => $authenticationId,
+            'is_magento_originated' => $isMagentoOriginated ? 1 : 0,
         ]);
         $this->taskResource->save($task);
     }
@@ -443,6 +453,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
     ): string {
         $destination = $client->getDestination($task['destinationID']);
         $authenticationId = $destination['authenticationID'] ?? null;
+        $isMagentoOriginated = $this->isMagentoOriginatedDestination($destination, $storeId, $indexName);
 
         $this->persistTask(
             $storeId,
@@ -450,8 +461,25 @@ class IngestionTaskService implements IngestionTaskServiceInterface
             $task['taskID'],
             $task['sourceID'],
             $task['destinationID'],
-            $authenticationId
+            $authenticationId,
+            $isMagentoOriginated
         );
+
+        $this->logger->info(
+            $isMagentoOriginated
+                ? 'Rediscovered Magento-originated ingestion pipeline for {indexName} (store {storeId})'
+                : 'Discovered Algolia-originated (merchant-created) ingestion pipeline for {indexName} (store {storeId})',
+            [
+                'storeId'             => $storeId,
+                'indexName'           => $indexName,
+                'taskId'              => $task['taskID'],
+                'sourceId'            => $task['sourceID'],
+                'destinationId'       => $task['destinationID'],
+                'authenticationId'    => $authenticationId,
+                'isMagentoOriginated' => $isMagentoOriginated,
+            ]
+        );
+
         return $task['taskID'];
     }
 }
