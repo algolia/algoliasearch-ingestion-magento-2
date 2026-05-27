@@ -233,7 +233,15 @@ class IngestionTaskService implements IngestionTaskServiceInterface
                 $tasks = $tasksResponse['tasks'] ?? [];
 
                 if (!empty($tasks)) {
-                    return $this->persistDiscoveredTask($client, $storeId, $indexName, $tasks[0], $entityType);
+                    $discoveredTask = $tasks[0];
+                    if (($discoveredTask['enabled'] ?? null) === false) {
+                        $this->logger->warning('Discovered Algolia task is disabled; re-enable in dashboard to resume ingestion', [
+                            'taskId'    => $discoveredTask['taskID'] ?? null,
+                            'indexName' => $indexName,
+                        ]);
+                        throw new TaskDisabledException($discoveredTask['taskID'] ?? '');
+                    }
+                    return $this->persistDiscoveredTask($client, $storeId, $indexName, $discoveredTask, $entityType);
                 }
 
                 // Destination exists but has no push task - create source + task only
