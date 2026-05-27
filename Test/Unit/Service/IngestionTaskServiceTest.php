@@ -10,6 +10,7 @@ use Algolia\AlgoliaSearch\Helper\ConfigHelper;
 use Algolia\AlgoliaSearch\Service\IndexNameFetcher;
 use Algolia\AlgoliaSearch\Test\TestCase;
 use Algolia\Ingestion\Api\IngestionClientProviderInterface;
+use Algolia\Ingestion\Exception\TaskDisabledException;
 use Algolia\Ingestion\Helper\IngestionConfigHelper;
 use Algolia\Ingestion\Model\IngestionTask;
 use Algolia\Ingestion\Model\IngestionTaskFactory;
@@ -157,7 +158,7 @@ class IngestionTaskServiceTest extends TestCase
         $taskModel = $this->mockPersistedTaskModel(self::TASK_ID);
         $this->setupCollectionReturning($taskModel);
 
-        $this->ingestionClient->method('getTask')->willReturn([]);
+        $this->ingestionClient->method('getTask')->willReturn(['enabled' => true]);
         $this->ingestionClient->expects($this->never())->method('listDestinations');
 
         $result = $this->service->getTaskId($this->mockIndexOptions());
@@ -169,7 +170,7 @@ class IngestionTaskServiceTest extends TestCase
     {
         $taskModel = $this->mockPersistedTaskModel(self::TASK_ID);
         $this->setupCollectionReturning($taskModel);
-        $this->ingestionClient->method('getTask')->willReturn([]);
+        $this->ingestionClient->method('getTask')->willReturn(['enabled' => true]);
 
         $this->service->getTaskId($this->mockIndexOptions());
 
@@ -186,7 +187,8 @@ class IngestionTaskServiceTest extends TestCase
 
         $this->ingestionClient->expects($this->once())
             ->method('getTask')
-            ->with(self::TASK_ID);
+            ->with(self::TASK_ID)
+            ->willReturn(['enabled' => true]);
 
         $this->service->getTaskId($this->mockIndexOptions());
     }
@@ -212,6 +214,45 @@ class IngestionTaskServiceTest extends TestCase
 
         $this->assertSame(self::TASK_ID, $result);
         $this->assertNotSame('stale-task-id', $result);
+    }
+
+    public function testGetTaskIdThrowsTaskDisabledExceptionWhenTaskIsDisabled(): void
+    {
+        $taskModel = $this->mockPersistedTaskModel(self::TASK_ID);
+        $this->setupCollectionReturning($taskModel);
+
+        $this->ingestionClient->method('getTask')
+            ->willReturn(['enabled' => false]);
+
+        // DB record must NOT be deleted when admin has disabled the task
+        $this->taskResource->expects($this->never())->method('delete');
+        // No discovery or creation should occur
+        $this->ingestionClient->expects($this->never())->method('listDestinations');
+        $this->ingestionClient->expects($this->never())->method('createSource');
+        $this->ingestionClient->expects($this->never())->method('createTask');
+
+        $this->expectException(TaskDisabledException::class);
+
+        $this->service->getTaskId($this->mockIndexOptions());
+    }
+
+    public function testGetTaskIdRecoversWhenEnabledFieldIsMissing(): void
+    {
+        $taskModel = $this->mockPersistedTaskModel('stale-task-id');
+        $this->setupCollectionReturning($taskModel);
+
+        // Response missing 'enabled' — treated as malformed, route through recovery
+        $this->ingestionClient->method('getTask')
+            ->willReturn(['taskID' => 'stale-task-id']);
+
+        $this->setupEmptyDestinationList();
+        $this->setupCreatePipelineMocks();
+        $this->ingestionClient->method('createTask')
+            ->willReturn(['taskID' => self::TASK_ID]);
+
+        $result = $this->service->getTaskId($this->mockIndexOptions());
+
+        $this->assertSame(self::TASK_ID, $result);
     }
 
     // --- Discovery (lazy pagination) ---

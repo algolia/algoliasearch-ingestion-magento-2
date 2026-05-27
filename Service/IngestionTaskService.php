@@ -11,6 +11,7 @@ use Algolia\AlgoliaSearch\Helper\ConfigHelper;
 use Algolia\AlgoliaSearch\Service\IndexNameFetcher;
 use Algolia\Ingestion\Api\IngestionClientProviderInterface;
 use Algolia\Ingestion\Api\IngestionTaskServiceInterface;
+use Algolia\Ingestion\Exception\TaskDisabledException;
 use Algolia\Ingestion\Helper\IngestionConfigHelper;
 use Algolia\Ingestion\Model\IngestionTask;
 use Algolia\Ingestion\Model\IngestionTaskFactory;
@@ -79,7 +80,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         $dbTask = $this->loadFromDatabase($storeId, $indexName);
         if ($dbTask !== null) {
             $taskId = $dbTask->getData('task_id');
-            if ($this->verifyTaskExists($client, $taskId)) {
+            if ($this->isTaskUsable($client, $taskId)) {
                 $this->storeInCache($storeId, $indexName, $taskId);
                 return $taskId;
             }
@@ -147,20 +148,45 @@ class IngestionTaskService implements IngestionTaskServiceInterface
     }
 
     /**
-     * Verify the task still exists in the Ingestion API.
-     * Returns false on NotFoundException so the caller can recover.
+     * Returns true when the task exists in the Ingestion API and is enabled.
+     * Returns false when the task is absent or the response is malformed (caller
+     * should treat as stale and rediscover/recreate).
+     *
+     * @throws TaskDisabledException when the task exists but enabled=false.
+     *         The caller MUST NOT delete the DB record in this case — the task
+     *         is intentionally disabled by an admin and the local reference is
+     *         still valid for if/when they re-enable it.
      */
-    protected function verifyTaskExists(IngestionClient $client, string $taskId): bool
+    protected function isTaskUsable(IngestionClient $client, string $taskId): bool
     {
         try {
-            $client->getTask($taskId);
-            return true;
+            $response = $client->getTask($taskId);
         } catch (NotFoundException) {
             // NotFoundException (HTTP 404) is thrown by ApiWrapper when the Algolia API returns a 404 response.
             // This means the task no longer exists in the Ingestion API, so the caller should discard the
             // stale reference and discover or create a new one.
             return false;
         }
+
+        $enabled = is_array($response)
+            ? ($response['enabled'] ?? null)
+            : $response->getEnabled();
+
+        if ($enabled === null) {
+            $this->logger->warning('Algolia task response missing enabled field; treating as stale', [
+                'taskId' => $taskId,
+            ]);
+            return false;
+        }
+
+        if ($enabled === false) {
+            $this->logger->warning('Algolia task is disabled; re-enable in dashboard to resume ingestion', [
+                'taskId' => $taskId,
+            ]);
+            throw new TaskDisabledException($taskId);
+        }
+
+        return true;
     }
 
     /**
