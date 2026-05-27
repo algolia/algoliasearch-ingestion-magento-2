@@ -8,7 +8,7 @@
             "source_id": true,
             "destination_id": true,
             "authentication_id": true,
-            "is_magento_originated": true,
+            "origin": true,
             "created_at": true,
             "updated_at": true
         },
