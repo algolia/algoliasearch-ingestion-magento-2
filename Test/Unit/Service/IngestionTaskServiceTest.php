@@ -999,6 +999,7 @@ class IngestionTaskServiceTest extends TestCase
                     'taskID' => $taskId,
                     'sourceID' => self::SOURCE_ID,
                     'destinationID' => self::DESTINATION_ID,
+                    'enabled' => true,
                 ],
             ],
         ];

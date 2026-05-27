@@ -84,7 +84,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
                 $this->storeInCache($storeId, $indexName, $taskId);
                 return $taskId;
             }
-            $this->logger->info('Cached task ID {taskId} not found via API for {indexName}, deleting local record', [
+            $this->logger->info('Cached task ID {taskId} for {indexName} is stale, deleting local record', [
                 'taskId'    => $taskId,
                 'indexName' => $indexName,
             ]);
@@ -148,29 +148,38 @@ class IngestionTaskService implements IngestionTaskServiceInterface
     }
 
     /**
-     * Returns true when the task exists in the Ingestion API and is enabled.
-     * Returns false when the task is absent or the response is malformed (caller
-     * should treat as stale and rediscover/recreate).
+     * Returns true when the task is enabled and usable.
      *
-     * @throws TaskDisabledException when the task exists but enabled=false.
-     *         The caller MUST NOT delete the DB record in this case — the task
-     *         is intentionally disabled by an admin and the local reference is
-     *         still valid for if/when they re-enable it.
+     * Pass a task ID to have the method fetch the task via the Ingestion API
+     * (returning false on 404), or pass an already-fetched task array to skip
+     * the fetch — useful when the caller already has the task in hand (e.g. from
+     * listTasks during discovery).
+     *
+     * Returns false when the task is absent (404) or the response is missing
+     * 'enabled' (caller should treat as stale and rediscover/recreate).
+     *
+     * @param string|array<string, mixed> $taskOrId
+     * @throws TaskDisabledException when the task has enabled=false.
+     *         Callers MUST NOT delete or replace any local reference — the task
+     *         is intentionally disabled by an admin and the reference is still
+     *         valid for if/when they re-enable it.
      */
-    protected function isTaskUsable(IngestionClient $client, string $taskId): bool
+    protected function isTaskUsable(IngestionClient $client, string|array $taskOrId): bool
     {
-        try {
-            $response = $client->getTask($taskId);
-        } catch (NotFoundException) {
-            // NotFoundException (HTTP 404) is thrown by ApiWrapper when the Algolia API returns a 404 response.
-            // This means the task no longer exists in the Ingestion API, so the caller should discard the
-            // stale reference and discover or create a new one.
-            return false;
+        if (is_string($taskOrId)) {
+            try {
+                $task = $client->getTask($taskOrId);
+            } catch (NotFoundException) {
+                // 404: task no longer exists in the Ingestion API. Caller should discard
+                // the stale reference and rediscover/recreate.
+                return false;
+            }
+        } else {
+            $task = $taskOrId;
         }
 
-        $enabled = is_array($response)
-            ? ($response['enabled'] ?? null)
-            : $response->getEnabled();
+        $enabled = $task['enabled'] ?? null;
+        $taskId  = $task['taskID'] ?? '';
 
         if ($enabled === null) {
             $this->logger->warning('Algolia task response missing enabled field; treating as stale', [
@@ -232,19 +241,11 @@ class IngestionTaskService implements IngestionTaskServiceInterface
                 );
                 $tasks = $tasksResponse['tasks'] ?? [];
 
-                if (!empty($tasks)) {
-                    $discoveredTask = $tasks[0];
-                    if (($discoveredTask['enabled'] ?? null) === false) {
-                        $this->logger->warning('Discovered Algolia task is disabled; re-enable in dashboard to resume ingestion', [
-                            'taskId'    => $discoveredTask['taskID'] ?? null,
-                            'indexName' => $indexName,
-                        ]);
-                        throw new TaskDisabledException($discoveredTask['taskID'] ?? '');
-                    }
-                    return $this->persistDiscoveredTask($client, $storeId, $indexName, $discoveredTask, $entityType);
+                if (!empty($tasks) && $this->isTaskUsable($client, $tasks[0])) {
+                    return $this->persistDiscoveredTask($client, $storeId, $indexName, $tasks[0], $entityType);
                 }
 
-                // Destination exists but has no push task - create source + task only
+                // Destination exists but has no usable push task — create source + task only
                 return $this->createTaskForExistingDestination(
                     $client,
                     $storeId,
