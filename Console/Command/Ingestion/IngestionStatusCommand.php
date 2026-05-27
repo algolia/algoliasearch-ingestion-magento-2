@@ -6,6 +6,7 @@ use Algolia\AlgoliaSearch\Service\StoreNameFetcher;
 use Algolia\Ingestion\Helper\IngestionConfigHelper;
 use Algolia\Ingestion\Model\IngestionTask;
 use Algolia\Ingestion\Model\ResourceModel\IngestionTask\CollectionFactory as TaskCollectionFactory;
+use Algolia\Ingestion\Service\IngestionTaskService;
 use Magento\Framework\App\State;
 use Magento\Framework\Console\Cli;
 use Magento\Framework\Exception\LocalizedException;
@@ -123,13 +124,13 @@ class IngestionStatusCommand extends AbstractIngestionCommand
         $output->writeln("Store $storeId: $storeName [$enabledLabel]");
 
         $table = new Table($output);
-        $table->setHeaders(['Index Name', 'Originated by', 'Task ID', 'Created At']);
+        $table->setHeaders(['Index Name', 'Origin', 'Task ID', 'Created At']);
 
         foreach ($tasks as $task) {
-            $originated = $task->getData('is_magento_originated') ? 'Magento' : 'Algolia';
+            $origin = (int) $task->getData('origin');
             $table->addRow([
                 $task->getData('index_name'),
-                $originated,
+                IngestionTaskService::getOriginLabel($origin),
                 $task->getData('task_id'),
                 $task->getData('created_at'),
             ]);
