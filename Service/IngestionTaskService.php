@@ -155,9 +155,6 @@ class IngestionTaskService implements IngestionTaskServiceInterface
      * the fetch — useful when the caller already has the task in hand (e.g. from
      * listTasks during discovery).
      *
-     * Returns false when the task is absent (404) or the response is missing
-     * 'enabled' (caller should treat as stale and rediscover/recreate).
-     *
      * @param string|array<string, mixed> $taskOrId
      * @throws TaskDisabledException when the task has enabled=false.
      *         Callers MUST NOT delete or replace any local reference — the task
@@ -178,21 +175,11 @@ class IngestionTaskService implements IngestionTaskServiceInterface
             $task = $taskOrId;
         }
 
-        $enabled = $task['enabled'] ?? null;
-        $taskId  = $task['taskID'] ?? '';
-
-        if ($enabled === null) {
-            $this->logger->warning('Algolia task response missing enabled field; treating as stale', [
-                'taskId' => $taskId,
-            ]);
-            return false;
-        }
-
-        if ($enabled === false) {
+        if (!$task['enabled']) {
             $this->logger->warning('Algolia task is disabled; re-enable in dashboard to resume ingestion', [
-                'taskId' => $taskId,
+                'taskId' => $task['taskID'],
             ]);
-            throw new TaskDisabledException($taskId);
+            throw new TaskDisabledException($task['taskID']);
         }
 
         return true;

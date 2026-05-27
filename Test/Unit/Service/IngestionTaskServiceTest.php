@@ -222,7 +222,7 @@ class IngestionTaskServiceTest extends TestCase
         $this->setupCollectionReturning($taskModel);
 
         $this->ingestionClient->method('getTask')
-            ->willReturn(['enabled' => false]);
+            ->willReturn(['taskID' => self::TASK_ID, 'enabled' => false]);
 
         // DB record must NOT be deleted when admin has disabled the task
         $this->taskResource->expects($this->never())->method('delete');
@@ -234,25 +234,6 @@ class IngestionTaskServiceTest extends TestCase
         $this->expectException(TaskDisabledException::class);
 
         $this->service->getTaskId($this->mockIndexOptions());
-    }
-
-    public function testGetTaskIdRecoversWhenEnabledFieldIsMissing(): void
-    {
-        $taskModel = $this->mockPersistedTaskModel('stale-task-id');
-        $this->setupCollectionReturning($taskModel);
-
-        // Response missing 'enabled' — treated as malformed, route through recovery
-        $this->ingestionClient->method('getTask')
-            ->willReturn(['taskID' => 'stale-task-id']);
-
-        $this->setupEmptyDestinationList();
-        $this->setupCreatePipelineMocks();
-        $this->ingestionClient->method('createTask')
-            ->willReturn(['taskID' => self::TASK_ID]);
-
-        $result = $this->service->getTaskId($this->mockIndexOptions());
-
-        $this->assertSame(self::TASK_ID, $result);
     }
 
     // --- Discovery (lazy pagination) ---
