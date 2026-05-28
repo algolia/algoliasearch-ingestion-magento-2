@@ -3,10 +3,10 @@
         xsi:noNamespaceSchemaLocation="urn:magento:framework:Event/etc/events.xsd">
     <event name="admin_system_config_changed_section_algoliasearch_credentials">
         <observer name="algolia_ingestion_credentials_changed"
-                  instance="Algolia\Ingestion\Observer\CredentialChangeObserver" />
+                  instance="Algolia\Ingestion\Observer\CredentialSectionTaskInvalidator" />
     </event>
     <event name="admin_system_config_changed_section_algoliasearch_indexing_manager">
         <observer name="algolia_ingestion_config_changed"
-                  instance="Algolia\Ingestion\Observer\IngestionConfigChangeObserver" />
+                  instance="Algolia\Ingestion\Observer\IngestionSectionTaskInvalidator" />
     </event>
 </config>

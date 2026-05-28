@@ -4,30 +4,32 @@ namespace Algolia\Ingestion\Test\Unit\Observer;
 
 use Algolia\AlgoliaSearch\Test\TestCase;
 use Algolia\Ingestion\Api\IngestionTaskServiceInterface;
-use Algolia\Ingestion\Observer\CredentialChangeObserver;
+use Algolia\Ingestion\Observer\TaskInvalidationObserver;
 use Magento\Framework\Event;
 use Magento\Framework\Event\Observer;
 use Magento\Store\Api\Data\StoreInterface;
 use Magento\Store\Model\StoreManagerInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 
-class CredentialChangeObserverTest extends TestCase
+class TaskInvalidationObserverTest extends TestCase
 {
     private const WATCHED_PATH = 'algoliasearch_credentials/credentials/api_key';
+    private const OTHER_WATCHED_PATH = 'algoliasearch_credentials/credentials/application_id';
     private const UNWATCHED_PATH = 'algoliasearch_credentials/credentials/debug';
 
     private null|(IngestionTaskServiceInterface&MockObject) $taskService = null;
     private null|(StoreManagerInterface&MockObject) $storeManager = null;
-    private ?CredentialChangeObserver $observer = null;
+    private ?TaskInvalidationObserver $observer = null;
 
     protected function setUp(): void
     {
         $this->taskService = $this->createMock(IngestionTaskServiceInterface::class);
         $this->storeManager = $this->createMock(StoreManagerInterface::class);
 
-        $this->observer = new CredentialChangeObserver(
+        $this->observer = new TaskInvalidationObserver(
             $this->taskService,
-            $this->storeManager
+            $this->storeManager,
+            [self::WATCHED_PATH, self::OTHER_WATCHED_PATH]
         );
     }
 
@@ -137,7 +139,7 @@ class CredentialChangeObserverTest extends TestCase
             'website' => '',
             'changed_paths' => [
                 self::UNWATCHED_PATH,
-                'algoliasearch_credentials/credentials/application_id',
+                self::OTHER_WATCHED_PATH,
             ],
         ]);
 
@@ -146,6 +148,25 @@ class CredentialChangeObserverTest extends TestCase
             ->with(1);
 
         $this->observer->execute($magentoObserver);
+    }
+
+    public function testEmptyWatchedPathsAlwaysSkips(): void
+    {
+        $observer = new TaskInvalidationObserver(
+            $this->taskService,
+            $this->storeManager,
+            []
+        );
+
+        $magentoObserver = $this->mockObserver([
+            'store' => '1',
+            'website' => '',
+            'changed_paths' => [self::WATCHED_PATH],
+        ]);
+
+        $this->taskService->expects($this->never())->method('invalidateByStoreId');
+
+        $observer->execute($magentoObserver);
     }
 
     // --- Helpers ---

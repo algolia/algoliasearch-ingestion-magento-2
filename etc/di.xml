@@ -23,6 +23,28 @@
                 type="Algolia\Ingestion\Plugin\IndexDeletionPlugin" />
     </type>
 
+    <!-- Per-section task UUID invalidators. See TaskInvalidationObserver
+         for why each path is watched; the section the observer is wired to
+         is defined in etc/adminhtml/events.xml. -->
+    <virtualType name="Algolia\Ingestion\Observer\CredentialSectionTaskInvalidator"
+                 type="Algolia\Ingestion\Observer\TaskInvalidationObserver">
+        <arguments>
+            <argument name="watchedPaths" xsi:type="array">
+                <item name="application_id" xsi:type="string">algoliasearch_credentials/credentials/application_id</item>
+                <item name="api_key" xsi:type="string">algoliasearch_credentials/credentials/api_key</item>
+                <item name="index_prefix" xsi:type="string">algoliasearch_credentials/credentials/index_prefix</item>
+            </argument>
+        </arguments>
+    </virtualType>
+    <virtualType name="Algolia\Ingestion\Observer\IngestionSectionTaskInvalidator"
+                 type="Algolia\Ingestion\Observer\TaskInvalidationObserver">
+        <arguments>
+            <argument name="watchedPaths" xsi:type="array">
+                <item name="region" xsi:type="string">algoliasearch_indexing_manager/ingestion/region</item>
+            </argument>
+        </arguments>
+    </virtualType>
+
     <!-- CLI commands -->
     <type name="Magento\Framework\Console\CommandListInterface">
         <arguments>
