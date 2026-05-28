@@ -10,6 +10,7 @@ use Algolia\AlgoliaSearch\Helper\ConfigHelper;
 use Algolia\AlgoliaSearch\Service\IndexNameFetcher;
 use Algolia\AlgoliaSearch\Test\TestCase;
 use Algolia\Ingestion\Api\IngestionClientProviderInterface;
+use Algolia\Ingestion\Exception\TaskDisabledException;
 use Algolia\Ingestion\Helper\IngestionConfigHelper;
 use Algolia\Ingestion\Model\IngestionTask;
 use Algolia\Ingestion\Model\IngestionTaskFactory;
@@ -34,6 +35,7 @@ class IngestionTaskServiceTest extends TestCase
     private null|(IngestionConfigHelper&MockObject) $configHelper = null;
     private null|(ConfigHelper&MockObject) $algoliaConfigHelper = null;
     private null|(IngestionTaskFactory&MockObject) $taskFactory = null;
+    private null|(IngestionTask&MockObject) $taskModel = null;
     private null|(IngestionTaskResource&MockObject) $taskResource = null;
     private null|(CollectionFactory&MockObject) $collectionFactory = null;
     private null|(Collection&MockObject) $collection = null;
@@ -64,7 +66,8 @@ class IngestionTaskServiceTest extends TestCase
         $this->collectionFactory = $this->createMock(CollectionFactory::class);
         $this->collectionFactory->method('create')->willReturn($this->collection);
 
-        $this->taskFactory->method('create')->willReturn($this->createMock(IngestionTask::class));
+        $this->taskModel = $this->createMock(IngestionTask::class);
+        $this->taskFactory->method('create')->willReturnCallback(fn() => $this->taskModel);
 
         $this->indexNameFetcher = $this->createMock(IndexNameFetcher::class);
         $this->indexNameFetcher->method('getOriginalIndexName')
@@ -155,7 +158,7 @@ class IngestionTaskServiceTest extends TestCase
         $taskModel = $this->mockPersistedTaskModel(self::TASK_ID);
         $this->setupCollectionReturning($taskModel);
 
-        $this->ingestionClient->method('getTask')->willReturn([]);
+        $this->ingestionClient->method('getTask')->willReturn(['enabled' => true]);
         $this->ingestionClient->expects($this->never())->method('listDestinations');
 
         $result = $this->service->getTaskId($this->mockIndexOptions());
@@ -167,7 +170,7 @@ class IngestionTaskServiceTest extends TestCase
     {
         $taskModel = $this->mockPersistedTaskModel(self::TASK_ID);
         $this->setupCollectionReturning($taskModel);
-        $this->ingestionClient->method('getTask')->willReturn([]);
+        $this->ingestionClient->method('getTask')->willReturn(['enabled' => true]);
 
         $this->service->getTaskId($this->mockIndexOptions());
 
@@ -184,7 +187,8 @@ class IngestionTaskServiceTest extends TestCase
 
         $this->ingestionClient->expects($this->once())
             ->method('getTask')
-            ->with(self::TASK_ID);
+            ->with(self::TASK_ID)
+            ->willReturn(['enabled' => true]);
 
         $this->service->getTaskId($this->mockIndexOptions());
     }
@@ -210,6 +214,26 @@ class IngestionTaskServiceTest extends TestCase
 
         $this->assertSame(self::TASK_ID, $result);
         $this->assertNotSame('stale-task-id', $result);
+    }
+
+    public function testGetTaskIdThrowsTaskDisabledExceptionWhenTaskIsDisabled(): void
+    {
+        $taskModel = $this->mockPersistedTaskModel(self::TASK_ID);
+        $this->setupCollectionReturning($taskModel);
+
+        $this->ingestionClient->method('getTask')
+            ->willReturn(['taskID' => self::TASK_ID, 'enabled' => false]);
+
+        // DB record must NOT be deleted when admin has disabled the task
+        $this->taskResource->expects($this->never())->method('delete');
+        // No discovery or creation should occur
+        $this->ingestionClient->expects($this->never())->method('listDestinations');
+        $this->ingestionClient->expects($this->never())->method('createSource');
+        $this->ingestionClient->expects($this->never())->method('createTask');
+
+        $this->expectException(TaskDisabledException::class);
+
+        $this->service->getTaskId($this->mockIndexOptions());
     }
 
     // --- Discovery (lazy pagination) ---
@@ -266,6 +290,37 @@ class IngestionTaskServiceTest extends TestCase
         $result = $this->service->getTaskId($this->mockIndexOptions());
 
         $this->assertSame(self::TASK_ID, $result);
+    }
+
+    public function testGetTaskIdThrowsTaskDisabledExceptionWhenDiscoveredTaskIsDisabled(): void
+    {
+        $this->setupEmptyCollection();
+
+        $this->ingestionClient->method('listDestinations')
+            ->willReturn($this->mockDestinationListResponse(
+                [self::DESTINATION_ID => self::INDEX_NAME],
+                nbPages: 1
+            ));
+
+        // Discovery hits a task on the matching destination, but admin has disabled it
+        $this->ingestionClient->method('listTasks')
+            ->willReturn([
+                'tasks' => [[
+                    'taskID' => self::TASK_ID,
+                    'sourceID' => self::SOURCE_ID,
+                    'destinationID' => self::DESTINATION_ID,
+                    'enabled' => false,
+                ]],
+            ]);
+
+        // Must not persist the disabled task or fall through to creating a parallel one
+        $this->taskResource->expects($this->never())->method('save');
+        $this->ingestionClient->expects($this->never())->method('createSource');
+        $this->ingestionClient->expects($this->never())->method('createTask');
+
+        $this->expectException(TaskDisabledException::class);
+
+        $this->service->getTaskId($this->mockIndexOptions());
     }
 
     public function testGetTaskIdCreatesTaskForExistingDestinationWithoutPushTask(): void
@@ -610,6 +665,201 @@ class IngestionTaskServiceTest extends TestCase
         $this->assertSame(self::TASK_ID, $result);
     }
 
+    // --- Naming convention contract ---
+    //
+    // These two tests pin the destination/source naming format explicitly. Every other
+    // provenance test derives expected names via reflection on the same methods, which keeps
+    // them DRY but means a format regression would not surface there (both sides would drift
+    // together). As this is a persistence format contract, pin the contract here so any change
+    // to the naming convention fails loudly.
+
+    public function testGetDestinationNameProducesExpectedFormat(): void
+    {
+        $this->assertSame(
+            'Magento (Store 1) - my_index',
+            $this->invokeMethod($this->service, 'getDestinationName', [1, 'my_index'])
+        );
+    }
+
+    public function testGetSourceNameProducesExpectedFormat(): void
+    {
+        $this->assertSame(
+            'Magento (Store 1) - products',
+            $this->invokeMethod($this->service, 'getSourceName', [1, 'products'])
+        );
+        $this->assertSame(
+            'Magento (Store 1)',
+            $this->invokeMethod($this->service, 'getSourceName', [1, null])
+        );
+    }
+
+    // --- Provenance tracking ---
+
+    public function testGetOriginLabelMapsAllStates(): void
+    {
+        $this->assertSame('Magento', IngestionTaskService::getOriginLabel(IngestionTaskService::ORIGIN_MAGENTO));
+        $this->assertSame('Hybrid',  IngestionTaskService::getOriginLabel(IngestionTaskService::ORIGIN_HYBRID));
+        $this->assertSame('Algolia', IngestionTaskService::getOriginLabel(IngestionTaskService::ORIGIN_ALGOLIA));
+        $this->assertSame('Unknown', IngestionTaskService::getOriginLabel(0));
+    }
+
+    public function testCreateFullPipelinePersistsOriginMagento(): void
+    {
+        $this->setupEmptyCollection();
+        $this->setupEmptyDestinationList();
+        $this->setupCreatePipelineMocks();
+        $this->ingestionClient->method('createTask')
+            ->willReturn(['taskID' => self::TASK_ID]);
+
+        $this->expectPersistedOrigin(IngestionTaskService::ORIGIN_MAGENTO);
+
+        $this->service->getTaskId($this->mockIndexOptions());
+    }
+
+    public function testCreateTaskForExistingDestinationPersistsOriginMagentoWhenDestinationNameMatches(): void
+    {
+        $this->setupEmptyCollection();
+
+        $this->ingestionClient->method('listDestinations')
+            ->willReturn($this->mockDestinationListResponse(
+                [self::DESTINATION_ID => self::INDEX_NAME],
+                nbPages: 1,
+                destinationName: $this->magentoDestinationName()
+            ));
+
+        $this->ingestionClient->method('listTasks')->willReturn(['tasks' => []]);
+        $this->ingestionClient->method('listSources')->willReturn($this->mockEmptySourceListResponse());
+        $this->ingestionClient->method('createSource')->willReturn(['sourceID' => self::SOURCE_ID]);
+        $this->ingestionClient->method('createTask')->willReturn(['taskID' => self::TASK_ID]);
+
+        $this->expectPersistedOrigin(IngestionTaskService::ORIGIN_MAGENTO);
+
+        $this->service->getTaskId($this->mockIndexOptions());
+    }
+
+    public function testCreateTaskForExistingDestinationPersistsOriginHybridWhenDestinationNameDiverges(): void
+    {
+        $this->setupEmptyCollection();
+
+        $this->ingestionClient->method('listDestinations')
+            ->willReturn($this->mockDestinationListResponse(
+                [self::DESTINATION_ID => self::INDEX_NAME],
+                nbPages: 1,
+                destinationName: 'Custom Search Pipeline'
+            ));
+
+        $this->ingestionClient->method('listTasks')->willReturn(['tasks' => []]);
+        $this->ingestionClient->method('listSources')->willReturn($this->mockEmptySourceListResponse());
+        $this->ingestionClient->method('createSource')->willReturn(['sourceID' => self::SOURCE_ID]);
+        $this->ingestionClient->method('createTask')->willReturn(['taskID' => self::TASK_ID]);
+
+        $this->expectPersistedOrigin(IngestionTaskService::ORIGIN_HYBRID);
+
+        $this->service->getTaskId($this->mockIndexOptions());
+    }
+
+    public function testPersistDiscoveredTaskPersistsOriginMagentoWhenBothNamesMatch(): void
+    {
+        $this->setupEmptyCollection();
+
+        $destinationName = $this->magentoDestinationName();
+        $this->ingestionClient->method('listDestinations')
+            ->willReturn($this->mockDestinationListResponse(
+                [self::DESTINATION_ID => self::INDEX_NAME],
+                nbPages: 1,
+                destinationName: $destinationName
+            ));
+        $this->ingestionClient->method('listTasks')
+            ->willReturn($this->mockTaskListResponseWithTask(self::TASK_ID));
+        $this->ingestionClient->method('getDestination')
+            ->willReturn([
+                'name' => $destinationName,
+                'authenticationID' => self::AUTHENTICATION_ID,
+            ]);
+        $this->ingestionClient->method('getSource')
+            ->willReturn(['name' => $this->magentoSourceName()]);
+
+        $this->expectPersistedOrigin(IngestionTaskService::ORIGIN_MAGENTO);
+
+        $this->service->getTaskId($this->mockIndexOptions());
+    }
+
+    public function testPersistDiscoveredTaskPersistsOriginAlgoliaWhenNeitherNameMatches(): void
+    {
+        $this->setupEmptyCollection();
+
+        $this->ingestionClient->method('listDestinations')
+            ->willReturn($this->mockDestinationListResponse(
+                [self::DESTINATION_ID => self::INDEX_NAME],
+                nbPages: 1,
+                destinationName: 'DASHBOARD_CREATED_DESTINATION'
+            ));
+        $this->ingestionClient->method('listTasks')
+            ->willReturn($this->mockTaskListResponseWithTask(self::TASK_ID));
+        $this->ingestionClient->method('getDestination')
+            ->willReturn([
+                'name' => 'DASHBOARD_CREATED_DESTINATION',
+                'authenticationID' => self::AUTHENTICATION_ID,
+            ]);
+        $this->ingestionClient->method('getSource')
+            ->willReturn(['name' => 'Push - 4327fa4d-e89f-4d66-a8be-497fc7574310']);
+
+        $this->expectPersistedOrigin(IngestionTaskService::ORIGIN_ALGOLIA);
+
+        $this->service->getTaskId($this->mockIndexOptions());
+    }
+
+    public function testPersistDiscoveredTaskPersistsOriginHybridWhenOnlyDestinationNameMatches(): void
+    {
+        $this->setupEmptyCollection();
+
+        $destinationName = $this->magentoDestinationName();
+        $this->ingestionClient->method('listDestinations')
+            ->willReturn($this->mockDestinationListResponse(
+                [self::DESTINATION_ID => self::INDEX_NAME],
+                nbPages: 1,
+                destinationName: $destinationName
+            ));
+        $this->ingestionClient->method('listTasks')
+            ->willReturn($this->mockTaskListResponseWithTask(self::TASK_ID));
+        $this->ingestionClient->method('getDestination')
+            ->willReturn([
+                'name' => $destinationName,
+                'authenticationID' => self::AUTHENTICATION_ID,
+            ]);
+        $this->ingestionClient->method('getSource')
+            ->willReturn(['name' => 'Push - 4327fa4d-e89f-4d66-a8be-497fc7574310']);
+
+        $this->expectPersistedOrigin(IngestionTaskService::ORIGIN_HYBRID);
+
+        $this->service->getTaskId($this->mockIndexOptions());
+    }
+
+    public function testPersistDiscoveredTaskPersistsOriginHybridWhenOnlySourceNameMatches(): void
+    {
+        $this->setupEmptyCollection();
+
+        $this->ingestionClient->method('listDestinations')
+            ->willReturn($this->mockDestinationListResponse(
+                [self::DESTINATION_ID => self::INDEX_NAME],
+                nbPages: 1,
+                destinationName: 'Custom Search Pipeline'
+            ));
+        $this->ingestionClient->method('listTasks')
+            ->willReturn($this->mockTaskListResponseWithTask(self::TASK_ID));
+        $this->ingestionClient->method('getDestination')
+            ->willReturn([
+                'name' => 'Custom Search Pipeline',
+                'authenticationID' => self::AUTHENTICATION_ID,
+            ]);
+        $this->ingestionClient->method('getSource')
+            ->willReturn(['name' => $this->magentoSourceName()]);
+
+        $this->expectPersistedOrigin(IngestionTaskService::ORIGIN_HYBRID);
+
+        $this->service->getTaskId($this->mockIndexOptions());
+    }
+
     // --- Helpers ---
 
     private function mockIndexOptions(
@@ -678,21 +928,48 @@ class IngestionTaskServiceTest extends TestCase
     private function mockDestinationListResponse(
         array $destinationIdToIndexMap,
         int $nbPages,
-        string $authenticationId = self::AUTHENTICATION_ID
+        string $authenticationId = self::AUTHENTICATION_ID,
+        ?string $destinationName = null
     ): array {
         $destinations = [];
         foreach ($destinationIdToIndexMap as $destinationId => $indexName) {
-            $destinations[] = [
+            $destination = [
                 'destinationID' => $destinationId,
                 'input' => ['indexName' => $indexName],
                 'authenticationID' => $authenticationId,
             ];
+            if ($destinationName !== null) {
+                $destination['name'] = $destinationName;
+            }
+            $destinations[] = $destination;
         }
 
         return [
             'destinations' => $destinations,
             'pagination' => ['nbPages' => $nbPages],
         ];
+    }
+
+    private function magentoDestinationName(int $storeId = self::STORE_ID, string $indexName = self::INDEX_NAME): string
+    {
+        return $this->invokeMethod($this->service, 'getDestinationName', [$storeId, $indexName]);
+    }
+
+    private function magentoSourceName(int $storeId = self::STORE_ID, string $entityType = 'products'): string
+    {
+        return $this->invokeMethod($this->service, 'getSourceName', [$storeId, $entityType]);
+    }
+
+    private function expectPersistedOrigin(int $expectedOrigin): IngestionTask&MockObject
+    {
+        $this->taskModel = $this->createMock(IngestionTask::class);
+        $this->taskModel->expects($this->once())
+            ->method('setData')
+            ->with($this->callback(fn(array $data): bool =>
+                ($data['origin'] ?? null) === $expectedOrigin
+            ))
+            ->willReturnSelf();
+        return $this->taskModel;
     }
 
     private function mockTaskListResponseWithTask(string $taskId): array
@@ -703,6 +980,7 @@ class IngestionTaskServiceTest extends TestCase
                     'taskID' => $taskId,
                     'sourceID' => self::SOURCE_ID,
                     'destinationID' => self::DESTINATION_ID,
+                    'enabled' => true,
                 ],
             ],
         ];
