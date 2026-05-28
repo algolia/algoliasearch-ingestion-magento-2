@@ -10,6 +10,7 @@ use Algolia\AlgoliaSearch\Helper\ConfigHelper;
 use Algolia\AlgoliaSearch\Service\IndexNameFetcher;
 use Algolia\AlgoliaSearch\Test\TestCase;
 use Algolia\Ingestion\Api\IngestionClientProviderInterface;
+use Algolia\Ingestion\Exception\TaskDisabledException;
 use Algolia\Ingestion\Helper\IngestionConfigHelper;
 use Algolia\Ingestion\Model\IngestionTask;
 use Algolia\Ingestion\Model\IngestionTaskFactory;
@@ -157,7 +158,7 @@ class IngestionTaskServiceTest extends TestCase
         $taskModel = $this->mockPersistedTaskModel(self::TASK_ID);
         $this->setupCollectionReturning($taskModel);
 
-        $this->ingestionClient->method('getTask')->willReturn([]);
+        $this->ingestionClient->method('getTask')->willReturn(['enabled' => true]);
         $this->ingestionClient->expects($this->never())->method('listDestinations');
 
         $result = $this->service->getTaskId($this->mockIndexOptions());
@@ -169,7 +170,7 @@ class IngestionTaskServiceTest extends TestCase
     {
         $taskModel = $this->mockPersistedTaskModel(self::TASK_ID);
         $this->setupCollectionReturning($taskModel);
-        $this->ingestionClient->method('getTask')->willReturn([]);
+        $this->ingestionClient->method('getTask')->willReturn(['enabled' => true]);
 
         $this->service->getTaskId($this->mockIndexOptions());
 
@@ -186,7 +187,8 @@ class IngestionTaskServiceTest extends TestCase
 
         $this->ingestionClient->expects($this->once())
             ->method('getTask')
-            ->with(self::TASK_ID);
+            ->with(self::TASK_ID)
+            ->willReturn(['enabled' => true]);
 
         $this->service->getTaskId($this->mockIndexOptions());
     }
@@ -212,6 +214,26 @@ class IngestionTaskServiceTest extends TestCase
 
         $this->assertSame(self::TASK_ID, $result);
         $this->assertNotSame('stale-task-id', $result);
+    }
+
+    public function testGetTaskIdThrowsTaskDisabledExceptionWhenTaskIsDisabled(): void
+    {
+        $taskModel = $this->mockPersistedTaskModel(self::TASK_ID);
+        $this->setupCollectionReturning($taskModel);
+
+        $this->ingestionClient->method('getTask')
+            ->willReturn(['taskID' => self::TASK_ID, 'enabled' => false]);
+
+        // DB record must NOT be deleted when admin has disabled the task
+        $this->taskResource->expects($this->never())->method('delete');
+        // No discovery or creation should occur
+        $this->ingestionClient->expects($this->never())->method('listDestinations');
+        $this->ingestionClient->expects($this->never())->method('createSource');
+        $this->ingestionClient->expects($this->never())->method('createTask');
+
+        $this->expectException(TaskDisabledException::class);
+
+        $this->service->getTaskId($this->mockIndexOptions());
     }
 
     // --- Discovery (lazy pagination) ---
@@ -268,6 +290,37 @@ class IngestionTaskServiceTest extends TestCase
         $result = $this->service->getTaskId($this->mockIndexOptions());
 
         $this->assertSame(self::TASK_ID, $result);
+    }
+
+    public function testGetTaskIdThrowsTaskDisabledExceptionWhenDiscoveredTaskIsDisabled(): void
+    {
+        $this->setupEmptyCollection();
+
+        $this->ingestionClient->method('listDestinations')
+            ->willReturn($this->mockDestinationListResponse(
+                [self::DESTINATION_ID => self::INDEX_NAME],
+                nbPages: 1
+            ));
+
+        // Discovery hits a task on the matching destination, but admin has disabled it
+        $this->ingestionClient->method('listTasks')
+            ->willReturn([
+                'tasks' => [[
+                    'taskID' => self::TASK_ID,
+                    'sourceID' => self::SOURCE_ID,
+                    'destinationID' => self::DESTINATION_ID,
+                    'enabled' => false,
+                ]],
+            ]);
+
+        // Must not persist the disabled task or fall through to creating a parallel one
+        $this->taskResource->expects($this->never())->method('save');
+        $this->ingestionClient->expects($this->never())->method('createSource');
+        $this->ingestionClient->expects($this->never())->method('createTask');
+
+        $this->expectException(TaskDisabledException::class);
+
+        $this->service->getTaskId($this->mockIndexOptions());
     }
 
     public function testGetTaskIdCreatesTaskForExistingDestinationWithoutPushTask(): void
@@ -927,6 +980,7 @@ class IngestionTaskServiceTest extends TestCase
                     'taskID' => $taskId,
                     'sourceID' => self::SOURCE_ID,
                     'destinationID' => self::DESTINATION_ID,
+                    'enabled' => true,
                 ],
             ],
         ];
