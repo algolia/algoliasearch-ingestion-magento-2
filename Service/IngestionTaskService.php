@@ -124,6 +124,18 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         }
     }
 
+    /**
+     * @throws \Exception
+     */
+    public function invalidateRow(IngestionTask $task): void
+    {
+        $storeId = (int) $task->getData('store_id');
+        $indexName = (string) $task->getData('index_name');
+        unset($this->cache[$storeId][$indexName]);
+
+        $this->taskResource->delete($task);
+    }
+
     protected function loadFromCache(int $storeId, string $indexName): ?string
     {
         return $this->cache[$storeId][$indexName] ?? null;
@@ -288,7 +300,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         return $taskId;
     }
 
-    protected function getTaskPipelineName(int $storeId): string
+    public function getTaskPipelineName(int $storeId): string
     {
         return 'Magento (Store ' . $storeId . ')';
     }

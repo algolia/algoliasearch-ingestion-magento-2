@@ -3,6 +3,7 @@
 namespace Algolia\Ingestion\Api;
 
 use Algolia\AlgoliaSearch\Api\Data\IndexOptionsInterface;
+use Algolia\Ingestion\Model\IngestionTask;
 
 interface IngestionTaskServiceInterface
 {
@@ -24,4 +25,11 @@ interface IngestionTaskServiceInterface
      * config change or credential rotation).
      */
     public function invalidateByStoreId(int $storeId): void;
+
+    /**
+     * Invalidate a single in-memory and persisted task record by model.
+     * Used by callers that already hold the IngestionTask (e.g. resource
+     * cleanup) and want to wipe one row without enumerating the store.
+     */
+    public function invalidateRow(IngestionTask $task): void;
 }
