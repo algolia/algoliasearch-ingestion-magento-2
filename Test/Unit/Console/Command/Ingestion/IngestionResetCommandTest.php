@@ -4,9 +4,11 @@ namespace Algolia\Ingestion\Test\Unit\Console\Command\Ingestion;
 
 use Algolia\Ingestion\Api\IngestionTaskServiceInterface;
 use Algolia\Ingestion\Console\Command\Ingestion\IngestionResetCommand;
+use Algolia\Ingestion\Console\Command\Ingestion\Renderer\CleanupReportRenderer;
 use Algolia\Ingestion\Model\ResourceModel\IngestionTask as IngestionTaskResource;
 use Algolia\Ingestion\Model\ResourceModel\IngestionTask\Collection;
 use Algolia\Ingestion\Model\ResourceModel\IngestionTask\CollectionFactory;
+use Algolia\Ingestion\Service\IngestionCleanupService;
 use Magento\Framework\Console\Cli;
 use Magento\Framework\DB\Adapter\AdapterInterface;
 use Magento\Framework\Exception\NoSuchEntityException;
@@ -21,6 +23,8 @@ class IngestionResetCommandTest extends AbstractIngestionCommandTestCase
     private null|(Collection&MockObject) $collection = null;
     private null|(IngestionTaskResource&MockObject) $taskResource = null;
     private null|(AdapterInterface&MockObject) $connection = null;
+    private null|(IngestionCleanupService&MockObject) $cleanupService = null;
+    private null|(CleanupReportRenderer&MockObject) $reportRenderer = null;
 
     protected function setUp(): void
     {
@@ -35,6 +39,9 @@ class IngestionResetCommandTest extends AbstractIngestionCommandTestCase
         $this->taskResource = $this->createMock(IngestionTaskResource::class);
         $this->taskResource->method('getConnection')->willReturn($this->connection);
         $this->taskResource->method('getMainTable')->willReturn(IngestionTaskResource::TABLE_NAME);
+
+        $this->cleanupService = $this->createMock(IngestionCleanupService::class);
+        $this->reportRenderer = $this->createMock(CleanupReportRenderer::class);
     }
 
     // --- confirmation ---
@@ -161,6 +168,8 @@ class IngestionResetCommandTest extends AbstractIngestionCommandTestCase
                 $this->taskService,
                 $this->collectionFactory,
                 $this->taskResource,
+                $this->cleanupService,
+                $this->reportRenderer,
                 $this->state,
                 $this->storeNameFetcher,
                 null,
@@ -182,6 +191,8 @@ class IngestionResetCommandTest extends AbstractIngestionCommandTestCase
             $this->taskService,
             $this->collectionFactory,
             $this->taskResource,
+            $this->cleanupService,
+            $this->reportRenderer,
             $this->state,
             $this->storeNameFetcher
         );
