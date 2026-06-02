@@ -4,23 +4,32 @@ namespace Algolia\Ingestion\Console\Command\Ingestion;
 
 use Algolia\AlgoliaSearch\Service\StoreNameFetcher;
 use Algolia\Ingestion\Api\IngestionTaskServiceInterface;
+use Algolia\Ingestion\Console\Command\Ingestion\Renderer\CleanupReportRenderer;
 use Algolia\Ingestion\Model\ResourceModel\IngestionTask as IngestionTaskResource;
 use Algolia\Ingestion\Model\ResourceModel\IngestionTask\CollectionFactory;
+use Algolia\Ingestion\Service\IngestionCleanupService;
 use Magento\Framework\App\State;
 use Magento\Framework\Console\Cli;
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Store\Model\StoreManagerInterface;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Question\ConfirmationQuestion;
 
 class IngestionResetCommand extends AbstractIngestionCommand
 {
+    private const OPTION_API_CLEANUP = 'api-cleanup';
+    private const OPTION_FORCE       = 'force';
+
     public function __construct(
         protected StoreManagerInterface         $storeManager,
         protected IngestionTaskServiceInterface $taskService,
         protected CollectionFactory             $collectionFactory,
         protected IngestionTaskResource         $taskResource,
+        protected IngestionCleanupService       $cleanupService,
+        protected CleanupReportRenderer         $reportRenderer,
         State                                   $state,
         StoreNameFetcher                        $storeNameFetcher,
         ?string                                 $name = null
@@ -35,7 +44,7 @@ class IngestionResetCommand extends AbstractIngestionCommand
 
     protected function getCommandDescription(): string
     {
-        return 'Clear the local Ingestion API task cache. Does not modify any resources in Algolia.';
+        return 'Clear the local Ingestion API task cache. Optionally also tears down the matching Algolia-side resources via --api-cleanup.';
     }
 
     protected function getStoreArgumentDescription(): string
@@ -45,7 +54,20 @@ class IngestionResetCommand extends AbstractIngestionCommand
 
     protected function getAdditionalDefinition(): array
     {
-        return [];
+        return [
+            new InputOption(
+                self::OPTION_API_CLEANUP,
+                null,
+                InputOption::VALUE_NONE,
+                'Also delete the matching Algolia-side task, source, destination, and authentication for Magento-owned rows.'
+            ),
+            new InputOption(
+                self::OPTION_FORCE,
+                null,
+                InputOption::VALUE_NONE,
+                'With --api-cleanup, skip the confirmation prompt. Readonly safety checks always run.'
+            ),
+        ];
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -54,17 +76,29 @@ class IngestionResetCommand extends AbstractIngestionCommand
         $this->output = $output;
         $this->setAreaCode();
 
-        $output->writeln('<comment>NOTE: This clears local cache only. No resources will be modified in Algolia.</comment>');
-
-        if (!$this->confirmOperation('Reset confirmed', 'Operation cancelled')) {
-            return Cli::RETURN_SUCCESS;
-        }
-
         try {
             $filteredStoreIds = $this->getStoreIds($input);
         } catch (LocalizedException $e) {
             $output->writeln('<error>' . $e->getMessage() . '</error>');
             return Cli::RETURN_FAILURE;
+        }
+
+        if ($input->getOption(self::OPTION_API_CLEANUP)) {
+            return $this->executeApiCleanup($filteredStoreIds, (bool) $input->getOption(self::OPTION_FORCE), $output);
+        }
+
+        return $this->executeLocalOnly($filteredStoreIds, $output);
+    }
+
+    /**
+     * @param int[] $filteredStoreIds
+     */
+    private function executeLocalOnly(array $filteredStoreIds, OutputInterface $output): int
+    {
+        $output->writeln('<comment>NOTE: This clears local cache only. No resources will be modified in Algolia.</comment>');
+
+        if (!$this->confirmOperation('Reset confirmed', 'Operation cancelled')) {
+            return Cli::RETURN_SUCCESS;
         }
 
         if (empty($filteredStoreIds)) {
@@ -77,6 +111,36 @@ class IngestionResetCommand extends AbstractIngestionCommand
 
         $output->writeln('<info>Ingestion task cache reset complete.</info>');
         return Cli::RETURN_SUCCESS;
+    }
+
+    /**
+     * @param int[] $filteredStoreIds
+     */
+    private function executeApiCleanup(array $filteredStoreIds, bool $force, OutputInterface $output): int
+    {
+        $plan = $this->cleanupService->buildPlan($filteredStoreIds);
+        $this->reportRenderer->renderPreview($plan, $output);
+
+        if ($plan->isEmpty()) {
+            return Cli::RETURN_SUCCESS;
+        }
+
+        if (!$force && !$this->confirmCleanup()) {
+            $output->writeln('<comment>Operation cancelled</comment>');
+            return Cli::RETURN_SUCCESS;
+        }
+
+        $result = $this->cleanupService->execute($plan);
+        $this->reportRenderer->renderResult($result, $output);
+
+        return $result->failureCount() > 0 ? Cli::RETURN_FAILURE : Cli::RETURN_SUCCESS;
+    }
+
+    private function confirmCleanup(): bool
+    {
+        $helper = $this->getHelper('question');
+        $question = new ConfirmationQuestion('<question>Proceed? [y/N]</question> ', false);
+        return (bool) $helper->ask($this->input, $this->output, $question);
     }
 
     private function resetAll(OutputInterface $output): void
