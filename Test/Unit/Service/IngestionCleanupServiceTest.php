@@ -67,7 +67,7 @@ class IngestionCleanupServiceTest extends TestCase
     public function testBuildPlanForOriginMagentoMarksAllFourForDelete(): void
     {
         $task = $this->mockTaskRow();
-        $this->setCollectionRows([$task]);
+        $this->mockCollectionWith([$task]);
         $this->stubNoSharedRefs();
         $this->stubNoTransformations();
 
@@ -85,7 +85,7 @@ class IngestionCleanupServiceTest extends TestCase
     public function testBuildPlanForOriginAlgoliaPreservesAllRemoteObjects(): void
     {
         $task = $this->mockTaskRow(origin: IngestionTaskService::ORIGIN_ALGOLIA);
-        $this->setCollectionRows([$task]);
+        $this->mockCollectionWith([$task]);
 
         // Algolia-owned rows must not issue any API calls during plan-building
         $this->client->expects($this->never())->method('listTasks');
@@ -105,7 +105,7 @@ class IngestionCleanupServiceTest extends TestCase
     public function testBuildPlanForOriginHybridWithMagentoSourcePreservesMerchantDestinationAndAuth(): void
     {
         $task = $this->mockTaskRow(origin: IngestionTaskService::ORIGIN_HYBRID);
-        $this->setCollectionRows([$task]);
+        $this->mockCollectionWith([$task]);
 
         // Source name matches Magento prefix, destination does not
         $this->client->method('getSource')
@@ -127,7 +127,7 @@ class IngestionCleanupServiceTest extends TestCase
     public function testBuildPlanForOriginHybridWithMagentoDestinationDeletesDestinationAndAuth(): void
     {
         $task = $this->mockTaskRow(origin: IngestionTaskService::ORIGIN_HYBRID);
-        $this->setCollectionRows([$task]);
+        $this->mockCollectionWith([$task]);
 
         // Destination name matches Magento prefix, source does not
         $this->client->method('getSource')
@@ -152,7 +152,7 @@ class IngestionCleanupServiceTest extends TestCase
     public function testBuildPlanDemotesSharedSourceToPreserve(): void
     {
         $task = $this->mockTaskRow();
-        $this->setCollectionRows([$task]);
+        $this->mockCollectionWith([$task]);
 
         $this->stubListTasks(externalSourceTask: true);
         $this->client->method('listDestinations')
@@ -170,7 +170,7 @@ class IngestionCleanupServiceTest extends TestCase
     public function testBuildPlanDemotesSharedDestinationToPreserve(): void
     {
         $task = $this->mockTaskRow();
-        $this->setCollectionRows([$task]);
+        $this->mockCollectionWith([$task]);
 
         $this->stubListTasks(externalDestinationTask: true);
         $this->client->method('listDestinations')
@@ -188,7 +188,7 @@ class IngestionCleanupServiceTest extends TestCase
     public function testBuildPlanDemotesSharedAuthToPreserve(): void
     {
         $task = $this->mockTaskRow();
-        $this->setCollectionRows([$task]);
+        $this->mockCollectionWith([$task]);
 
         $this->stubNoSharedTasks();
         // listDestinations(authenticationID=[AUTH_ID]) returns an external destination
@@ -213,7 +213,7 @@ class IngestionCleanupServiceTest extends TestCase
     public function testBuildPlanHandlesNullIdsInDbRowWithoutError(): void
     {
         $task = $this->mockTaskRow(sourceId: null, destinationId: null, authId: null);
-        $this->setCollectionRows([$task]);
+        $this->mockCollectionWith([$task]);
 
         $this->client->method('listTasks')->willReturn(['tasks' => [['taskID' => self::TASK_ID]]]);
         $this->client->method('listDestinations')->willReturn(['destinations' => []]);
@@ -234,7 +234,7 @@ class IngestionCleanupServiceTest extends TestCase
     public function testBuildPlanIncludesPreservedTransformationsWhenDestinationDeleteIsPlanned(): void
     {
         $task = $this->mockTaskRow();
-        $this->setCollectionRows([$task]);
+        $this->mockCollectionWith([$task]);
 
         $this->stubNoSharedRefs();
         $this->client->method('getDestination')->willReturn([
@@ -387,7 +387,7 @@ class IngestionCleanupServiceTest extends TestCase
     /**
      * @param IngestionTask[] $tasks
      */
-    private function setCollectionRows(array $tasks): void
+    private function mockCollectionWith(array $tasks): void
     {
         $this->collection = $this->createMock(Collection::class);
         $this->collection->method('addFieldToFilter')->willReturnSelf();

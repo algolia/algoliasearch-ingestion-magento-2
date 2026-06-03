@@ -4,6 +4,7 @@ namespace Algolia\Ingestion\Service;
 
 use Algolia\AlgoliaSearch\Api\IngestionClient;
 use Algolia\AlgoliaSearch\Api\LoggerInterface;
+use Algolia\AlgoliaSearch\Exceptions\AlgoliaException;
 use Algolia\AlgoliaSearch\Exceptions\NotFoundException;
 use Algolia\Ingestion\Api\IngestionClientProviderInterface;
 use Algolia\Ingestion\Model\IngestionTask;
@@ -25,6 +26,7 @@ class IngestionCleanupService
 
     /**
      * @param int[] $storeIds Empty array means "all stores".
+     * @throws AlgoliaException
      */
     public function buildPlan(array $storeIds): CleanupPlan
     {
@@ -42,6 +44,9 @@ class IngestionCleanupService
         return new CleanupPlan($rows, $storeIds, new \DateTimeImmutable());
     }
 
+    /**
+     * @throws AlgoliaException
+     */
     public function execute(CleanupPlan $plan): CleanupResult
     {
         $results = [];
@@ -51,6 +56,9 @@ class IngestionCleanupService
         return new CleanupResult($results);
     }
 
+    /**
+     * @throws AlgoliaException
+     */
     protected function buildRowPlan(IngestionTask $task): RowPlan
     {
         $storeId       = (int) $task->getData('store_id');
@@ -88,7 +96,7 @@ class IngestionCleanupService
 
         $preservedTransformations = [];
         $destinationPlan = $objects[RowPlan::OBJECT_DESTINATION];
-        if ($destinationPlan->isDelete() && $destinationPlan->id !== null) {
+        if ($destinationPlan->canDelete()) {
             $preservedTransformations = $this->fetchTransformationIds($client, $destinationPlan->id);
         }
 
@@ -180,7 +188,7 @@ class IngestionCleanupService
         ?string $ownDestinationId
     ): array {
         $sourcePlan = $objects[RowPlan::OBJECT_SOURCE];
-        if ($sourcePlan->isDelete() && $sourcePlan->id !== null
+        if ($sourcePlan->canDelete()
             && $this->isSourceShared($client, $sourcePlan->id, $ownTaskId)) {
             $objects[RowPlan::OBJECT_SOURCE] = ObjectPlan::preserve(
                 $sourcePlan->id,
@@ -189,7 +197,7 @@ class IngestionCleanupService
         }
 
         $destinationPlan = $objects[RowPlan::OBJECT_DESTINATION];
-        if ($destinationPlan->isDelete() && $destinationPlan->id !== null
+        if ($destinationPlan->canDelete()
             && $this->isDestinationShared($client, $destinationPlan->id, $ownTaskId)) {
             $objects[RowPlan::OBJECT_DESTINATION] = ObjectPlan::preserve(
                 $destinationPlan->id,
@@ -198,7 +206,7 @@ class IngestionCleanupService
         }
 
         $authPlan = $objects[RowPlan::OBJECT_AUTHENTICATION];
-        if ($authPlan->isDelete() && $authPlan->id !== null
+        if ($authPlan->canDelete()
             && $this->isAuthShared($client, $authPlan->id, $ownDestinationId)) {
             $objects[RowPlan::OBJECT_AUTHENTICATION] = ObjectPlan::preserve(
                 $authPlan->id,
@@ -289,6 +297,9 @@ class IngestionCleanupService
         }
     }
 
+    /**
+     * @throws AlgoliaException
+     */
     protected function executeRow(RowPlan $row): RowResult
     {
         $client = $this->clientProvider->getClient($row->storeId);
@@ -297,7 +308,7 @@ class IngestionCleanupService
 
         foreach (RowPlan::OBJECT_TYPES as $type) {
             $object = $row->getObject($type);
-            if (!$object->isDelete() || $object->id === null) {
+            if (!$object->canDelete()) {
                 continue;
             }
 

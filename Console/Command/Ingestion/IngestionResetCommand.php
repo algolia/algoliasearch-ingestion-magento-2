@@ -2,6 +2,7 @@
 
 namespace Algolia\Ingestion\Console\Command\Ingestion;
 
+use Algolia\AlgoliaSearch\Exceptions\AlgoliaException;
 use Algolia\AlgoliaSearch\Service\StoreNameFetcher;
 use Algolia\Ingestion\Api\IngestionTaskServiceInterface;
 use Algolia\Ingestion\Console\Command\Ingestion\Renderer\CleanupReportRenderer;
@@ -70,6 +71,9 @@ class IngestionResetCommand extends AbstractIngestionCommand
         ];
     }
 
+    /**
+     * @throws AlgoliaException|LocalizedException
+     */
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $this->input = $input;
@@ -92,10 +96,13 @@ class IngestionResetCommand extends AbstractIngestionCommand
 
     /**
      * @param int[] $filteredStoreIds
+     * @throws LocalizedException
      */
     private function executeLocalOnly(array $filteredStoreIds, OutputInterface $output): int
     {
-        $output->writeln('<comment>NOTE: This clears local cache only. No resources will be modified in Algolia.</comment>');
+        $output->writeln(
+            '<comment>NOTE: This clears local cache only. No resources will be modified in Algolia.</comment>'
+        );
 
         if (!$this->confirmOperation('Reset confirmed', 'Operation cancelled')) {
             return Cli::RETURN_SUCCESS;
@@ -115,6 +122,7 @@ class IngestionResetCommand extends AbstractIngestionCommand
 
     /**
      * @param int[] $filteredStoreIds
+     * @throws AlgoliaException
      */
     private function executeApiCleanup(array $filteredStoreIds, bool $force, OutputInterface $output): int
     {
@@ -143,6 +151,9 @@ class IngestionResetCommand extends AbstractIngestionCommand
         return (bool) $helper->ask($this->input, $this->output, $question);
     }
 
+    /**
+     * @throws LocalizedException
+     */
     private function resetAll(OutputInterface $output): void
     {
         $count = $this->collectionFactory->create()->getSize();

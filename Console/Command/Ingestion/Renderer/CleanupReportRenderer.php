@@ -17,7 +17,11 @@ class CleanupReportRenderer
 
     public function renderPreview(CleanupPlan $plan, OutputInterface $output): void
     {
-        $output->writeln('<comment>NOTE: This will delete resources in Algolia for ' . $this->renderTargetLabel($plan) . '.</comment>');
+        $output->writeln(
+            '<comment>NOTE: This will delete resources in Algolia for '
+            . $this->renderTargetLabel($plan)
+            . '.</comment>'
+        );
         $output->writeln('Checks performed at ' . $plan->checkedAt->format('H:i:s'));
         $output->writeln('');
 
@@ -67,7 +71,11 @@ class CleanupReportRenderer
         foreach ($rowsWithDeletes as $row) {
             $output->writeln($this->rowHeader($row));
             foreach ($row->deletes() as $object) {
-                $output->writeln(sprintf('  %s %s', $this->padObjectType($this->objectTypeForPlan($row, $object)), $object->id));
+                $output->writeln(sprintf(
+                    '  %s %s',
+                    $this->padObjectType($this->objectTypeForPlan($row, $object)),
+                    $object->id
+                ));
             }
             $output->writeln('');
         }

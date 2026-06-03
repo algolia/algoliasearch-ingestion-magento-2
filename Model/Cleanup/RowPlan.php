@@ -41,7 +41,7 @@ class RowPlan
     /** @return ObjectPlan[] */
     public function deletes(): array
     {
-        return array_values(array_filter($this->objects, fn(ObjectPlan $o) => $o->isDelete() && $o->id !== null));
+        return array_values(array_filter($this->objects, fn(ObjectPlan $o) => $o->canDelete()));
     }
 
     /** @return array<string, ObjectPlan> Keyed by OBJECT_* constants. */
