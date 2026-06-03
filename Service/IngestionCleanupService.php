@@ -25,21 +25,25 @@ class IngestionCleanupService
     ) {}
 
     /**
+     * Build a transaction-aware cleanup plan.
+     *
+     * Plan construction runs as a sequence of phases over a staged row collection.
+     * Order matters: destination overrides must precede the auth override because
+     * the auth shared-ref check consumes the post-override destination decisions.
+     *
      * @param int[] $storeIds Empty array means "all stores".
      * @throws AlgoliaException
      */
     public function buildPlan(array $storeIds): CleanupPlan
     {
-        $collection = $this->collectionFactory->create();
-        if (!empty($storeIds)) {
-            $collection->addFieldToFilter('store_id', ['in' => $storeIds]);
-        }
+        $stage = $this->buildInitialStage($storeIds);
 
-        $rows = [];
-        foreach ($collection as $task) {
-            /** @var IngestionTask $task */
-            $rows[] = $this->buildRowPlan($task);
-        }
+        $this->applySourceOverridesAcrossRows($stage);
+        $this->applyDestinationOverridesAcrossRows($stage);
+        $this->applyAuthOverridesAcrossRows($stage);
+        $this->attachPreservedTransformationsAcrossRows($stage);
+
+        $rows = array_map(fn(array $state) => $this->materializeRowPlan($state), $stage);
 
         return new CleanupPlan($rows, $storeIds, new \DateTimeImmutable());
     }
@@ -56,10 +60,32 @@ class IngestionCleanupService
         return new CleanupResult($results);
     }
 
+    // ---- Phase 0: initial stage ----
+
     /**
+     * @return array<int, array<string, mixed>>
      * @throws AlgoliaException
      */
-    protected function buildRowPlan(IngestionTask $task): RowPlan
+    protected function buildInitialStage(array $storeIds): array
+    {
+        $collection = $this->collectionFactory->create();
+        if (!empty($storeIds)) {
+            $collection->addFieldToFilter('store_id', ['in' => $storeIds]);
+        }
+
+        $stage = [];
+        foreach ($collection as $task) {
+            /** @var IngestionTask $task */
+            $stage[] = $this->buildInitialRowState($task);
+        }
+        return $stage;
+    }
+
+    /**
+     * @return array<string, mixed>
+     * @throws AlgoliaException
+     */
+    protected function buildInitialRowState(IngestionTask $task): array
     {
         $storeId       = (int) $task->getData('store_id');
         $indexName     = (string) $task->getData('index_name');
@@ -70,20 +96,20 @@ class IngestionCleanupService
         $authId        = $this->nullableString($task->getData('authentication_id'));
 
         if ($origin === IngestionTaskService::ORIGIN_ALGOLIA) {
-            $objects = [
-                RowPlan::OBJECT_TASK           => ObjectPlan::preserve($taskId, 'Algolia-owned pipeline'),
-                RowPlan::OBJECT_SOURCE         => ObjectPlan::preserve($sourceId, 'Algolia-owned pipeline'),
-                RowPlan::OBJECT_DESTINATION    => ObjectPlan::preserve($destinationId, 'Algolia-owned pipeline'),
-                RowPlan::OBJECT_AUTHENTICATION => ObjectPlan::preserve($authId, 'Algolia-owned pipeline'),
+            return [
+                'task'                       => $task,
+                'client'                     => null,
+                'storeId'                    => $storeId,
+                'indexName'                  => $indexName,
+                'origin'                     => $origin,
+                'objects'                    => [
+                    RowPlan::OBJECT_TASK           => ObjectPlan::preserve($taskId, 'Algolia-owned pipeline'),
+                    RowPlan::OBJECT_SOURCE         => ObjectPlan::preserve($sourceId, 'Algolia-owned pipeline'),
+                    RowPlan::OBJECT_DESTINATION    => ObjectPlan::preserve($destinationId, 'Algolia-owned pipeline'),
+                    RowPlan::OBJECT_AUTHENTICATION => ObjectPlan::preserve($authId, 'Algolia-owned pipeline'),
+                ],
+                'preservedTransformationIds' => [],
             ];
-            return new RowPlan(
-                $task,
-                $storeId,
-                $indexName,
-                $origin,
-                IngestionTaskService::getOriginLabel($origin),
-                $objects
-            );
         }
 
         $client = $this->clientProvider->getClient($storeId);
@@ -92,23 +118,15 @@ class IngestionCleanupService
             ? $this->planForHybridRow($client, $storeId, $taskId, $sourceId, $destinationId, $authId)
             : $this->planForMagentoRow($taskId, $sourceId, $destinationId, $authId);
 
-        $objects = $this->applySharedRefOverrides($client, $objects, $taskId, $destinationId);
-
-        $preservedTransformations = [];
-        $destinationPlan = $objects[RowPlan::OBJECT_DESTINATION];
-        if ($destinationPlan->canDelete()) {
-            $preservedTransformations = $this->fetchTransformationIds($client, $destinationPlan->id);
-        }
-
-        return new RowPlan(
-            $task,
-            $storeId,
-            $indexName,
-            $origin,
-            IngestionTaskService::getOriginLabel($origin),
-            $objects,
-            $preservedTransformations
-        );
+        return [
+            'task'                       => $task,
+            'client'                     => $client,
+            'storeId'                    => $storeId,
+            'indexName'                  => $indexName,
+            'origin'                     => $origin,
+            'objects'                    => $objects,
+            'preservedTransformationIds' => [],
+        ];
     }
 
     /**
@@ -174,50 +192,123 @@ class IngestionCleanupService
             : ObjectPlan::preserve(null, 'not recorded locally');
     }
 
+    // ---- Phase methods (one per object type) ----
+
     /**
-     * Demote any DELETE that is still referenced by another task/destination to PRESERVE. Shared
-     * references only matter when we are about to delete the object; PRESERVE plans are left alone.
-     *
-     * @param array<string, ObjectPlan> $objects
-     * @return array<string, ObjectPlan>
+     * @param array<int, array<string, mixed>> $stage
      */
-    protected function applySharedRefOverrides(
-        IngestionClient $client,
-        array $objects,
-        ?string $ownTaskId,
-        ?string $ownDestinationId
-    ): array {
-        $sourcePlan = $objects[RowPlan::OBJECT_SOURCE];
+    protected function applySourceOverridesAcrossRows(array &$stage): void
+    {
+        $ownTaskIds = $this->collectDeleteIds($stage, RowPlan::OBJECT_TASK);
+        foreach ($stage as &$state) {
+            if ($state['origin'] === IngestionTaskService::ORIGIN_ALGOLIA) {
+                continue;
+            }
+            $this->applySourceOverride($state, $ownTaskIds);
+        }
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $stage
+     */
+    protected function applyDestinationOverridesAcrossRows(array &$stage): void
+    {
+        $ownTaskIds = $this->collectDeleteIds($stage, RowPlan::OBJECT_TASK);
+        foreach ($stage as &$state) {
+            if ($state['origin'] === IngestionTaskService::ORIGIN_ALGOLIA) {
+                continue;
+            }
+            $this->applyDestinationOverride($state, $ownTaskIds);
+        }
+    }
+
+    /**
+     * Run AFTER destination overrides so the destination-ID union reflects final decisions.
+     * Without this ordering an auth could be deleted while a preserved destination still
+     * references it, breaking an external task's pipeline.
+     *
+     * @param array<int, array<string, mixed>> $stage
+     */
+    protected function applyAuthOverridesAcrossRows(array &$stage): void
+    {
+        $ownDestIds = $this->collectDeleteIds($stage, RowPlan::OBJECT_DESTINATION);
+        foreach ($stage as &$state) {
+            if ($state['origin'] === IngestionTaskService::ORIGIN_ALGOLIA) {
+                continue;
+            }
+            $this->applyAuthOverride($state, $ownDestIds);
+        }
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $stage
+     */
+    protected function attachPreservedTransformationsAcrossRows(array &$stage): void
+    {
+        foreach ($stage as &$state) {
+            $destPlan = $state['objects'][RowPlan::OBJECT_DESTINATION] ?? null;
+            if ($destPlan instanceof ObjectPlan && $destPlan->canDelete() && $state['client'] !== null) {
+                $state['preservedTransformationIds'] = $this->fetchTransformationIds($state['client'], $destPlan->id);
+            }
+        }
+    }
+
+    // ---- Per-row overrides ----
+
+    /**
+     * @param array<string, mixed> $state
+     * @param string[] $ownTaskIds
+     */
+    protected function applySourceOverride(array &$state, array $ownTaskIds): void
+    {
+        $sourcePlan = $state['objects'][RowPlan::OBJECT_SOURCE];
         if ($sourcePlan->canDelete()
-            && $this->isSourceShared($client, $sourcePlan->id, $ownTaskId)) {
-            $objects[RowPlan::OBJECT_SOURCE] = ObjectPlan::preserve(
+            && $this->isSourceShared($state['client'], $sourcePlan->id, $ownTaskIds)) {
+            $state['objects'][RowPlan::OBJECT_SOURCE] = ObjectPlan::preserve(
                 $sourcePlan->id,
                 'still referenced by external task'
             );
         }
+    }
 
-        $destinationPlan = $objects[RowPlan::OBJECT_DESTINATION];
-        if ($destinationPlan->canDelete()
-            && $this->isDestinationShared($client, $destinationPlan->id, $ownTaskId)) {
-            $objects[RowPlan::OBJECT_DESTINATION] = ObjectPlan::preserve(
-                $destinationPlan->id,
+    /**
+     * @param array<string, mixed> $state
+     * @param string[] $ownTaskIds
+     */
+    protected function applyDestinationOverride(array &$state, array $ownTaskIds): void
+    {
+        $destPlan = $state['objects'][RowPlan::OBJECT_DESTINATION];
+        if ($destPlan->canDelete()
+            && $this->isDestinationShared($state['client'], $destPlan->id, $ownTaskIds)) {
+            $state['objects'][RowPlan::OBJECT_DESTINATION] = ObjectPlan::preserve(
+                $destPlan->id,
                 'still referenced by external task'
             );
         }
+    }
 
-        $authPlan = $objects[RowPlan::OBJECT_AUTHENTICATION];
+    /**
+     * @param array<string, mixed> $state
+     * @param string[] $ownDestIds
+     */
+    protected function applyAuthOverride(array &$state, array $ownDestIds): void
+    {
+        $authPlan = $state['objects'][RowPlan::OBJECT_AUTHENTICATION];
         if ($authPlan->canDelete()
-            && $this->isAuthShared($client, $authPlan->id, $ownDestinationId)) {
-            $objects[RowPlan::OBJECT_AUTHENTICATION] = ObjectPlan::preserve(
+            && $this->isAuthShared($state['client'], $authPlan->id, $ownDestIds)) {
+            $state['objects'][RowPlan::OBJECT_AUTHENTICATION] = ObjectPlan::preserve(
                 $authPlan->id,
                 'still referenced by external destination'
             );
         }
-
-        return $objects;
     }
 
-    protected function isSourceShared(IngestionClient $client, string $sourceId, ?string $ownTaskId): bool
+    // ---- Shared-ref helpers ----
+
+    /**
+     * @param string[] $ownTaskIds
+     */
+    protected function isSourceShared(IngestionClient $client, string $sourceId, array $ownTaskIds): bool
     {
         $response = $this->safeFetch(fn() => $client->listTasks(
             itemsPerPage: null,
@@ -226,10 +317,13 @@ class IngestionCleanupService
             enabled: null,
             sourceID: [$sourceId]
         ));
-        return $this->hasExternalReference($response['tasks'] ?? [], 'taskID', $ownTaskId);
+        return $this->hasExternalReference($response['tasks'] ?? [], 'taskID', $ownTaskIds);
     }
 
-    protected function isDestinationShared(IngestionClient $client, string $destinationId, ?string $ownTaskId): bool
+    /**
+     * @param string[] $ownTaskIds
+     */
+    protected function isDestinationShared(IngestionClient $client, string $destinationId, array $ownTaskIds): bool
     {
         $response = $this->safeFetch(fn() => $client->listTasks(
             itemsPerPage: null,
@@ -240,10 +334,13 @@ class IngestionCleanupService
             sourceType: null,
             destinationID: [$destinationId]
         ));
-        return $this->hasExternalReference($response['tasks'] ?? [], 'taskID', $ownTaskId);
+        return $this->hasExternalReference($response['tasks'] ?? [], 'taskID', $ownTaskIds);
     }
 
-    protected function isAuthShared(IngestionClient $client, string $authId, ?string $ownDestinationId): bool
+    /**
+     * @param string[] $ownDestIds
+     */
+    protected function isAuthShared(IngestionClient $client, string $authId, array $ownDestIds): bool
     {
         $response = $this->safeFetch(fn() => $client->listDestinations(
             itemsPerPage: null,
@@ -251,20 +348,42 @@ class IngestionCleanupService
             type: null,
             authenticationID: [$authId]
         ));
-        return $this->hasExternalReference($response['destinations'] ?? [], 'destinationID', $ownDestinationId);
+        return $this->hasExternalReference($response['destinations'] ?? [], 'destinationID', $ownDestIds);
     }
 
     /**
+     * True when at least one record references an ID outside the "ours" set.
+     *
      * @param array<int, array<string, mixed>> $records
+     * @param string[] $ownIds
      */
-    protected function hasExternalReference(array $records, string $idField, ?string $ownId): bool
+    protected function hasExternalReference(array $records, string $idField, array $ownIds): bool
     {
         foreach ($records as $record) {
-            if (($record[$idField] ?? null) !== $ownId) {
+            $id = $record[$idField] ?? null;
+            if ($id !== null && !in_array($id, $ownIds, true)) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * Collect unique non-null IDs from the stage for objects whose plan is currently DELETE.
+     *
+     * @param array<int, array<string, mixed>> $stage
+     * @return string[]
+     */
+    protected function collectDeleteIds(array $stage, string $objectType): array
+    {
+        $ids = [];
+        foreach ($stage as $state) {
+            $plan = $state['objects'][$objectType] ?? null;
+            if ($plan instanceof ObjectPlan && $plan->canDelete()) {
+                $ids[] = $plan->id;
+            }
+        }
+        return array_values(array_unique($ids));
     }
 
     /**
@@ -295,6 +414,24 @@ class IngestionCleanupService
         } catch (NotFoundException) {
             return null;
         }
+    }
+
+    // ---- Materialize and execute ----
+
+    /**
+     * @param array<string, mixed> $state
+     */
+    protected function materializeRowPlan(array $state): RowPlan
+    {
+        return new RowPlan(
+            $state['task'],
+            $state['storeId'],
+            $state['indexName'],
+            $state['origin'],
+            IngestionTaskService::getOriginLabel($state['origin']),
+            $state['objects'],
+            $state['preservedTransformationIds']
+        );
     }
 
     /**

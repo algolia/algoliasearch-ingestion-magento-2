@@ -21,15 +21,46 @@ class CleanupPlan
 
     public function totalDeleteCount(): int
     {
-        return array_sum(array_map(fn(RowPlan $r) => count($r->deletes()), $this->rows));
+        return count($this->distinctObjectKeys(ObjectPlan::ACTION_DELETE));
     }
 
     public function totalPreserveCount(): int
     {
-        $count = 0;
+        return count($this->distinctObjectKeys(ObjectPlan::ACTION_PRESERVE))
+            + count($this->distinctTransformationIds());
+    }
+
+    /**
+     * Distinct "(type, id)" keys across all rows for the given action. Shared objects
+     * (e.g. a per-store auth referenced by multiple Magento rows) collapse to one key
+     * so the summary line counts what will actually happen.
+     *
+     * @return string[]
+     */
+    protected function distinctObjectKeys(string $action): array
+    {
+        $seen = [];
         foreach ($this->rows as $row) {
-            $count += count($row->preserves()) + count($row->preservedTransformationIds);
+            foreach ($row->objects as $type => $plan) {
+                if ($plan->action === $action && $plan->id !== null) {
+                    $seen["$type|{$plan->id}"] = true;
+                }
+            }
         }
-        return $count;
+        return array_keys($seen);
+    }
+
+    /**
+     * @return string[]
+     */
+    protected function distinctTransformationIds(): array
+    {
+        $seen = [];
+        foreach ($this->rows as $row) {
+            foreach ($row->preservedTransformationIds as $id) {
+                $seen[$id] = true;
+            }
+        }
+        return array_keys($seen);
     }
 }

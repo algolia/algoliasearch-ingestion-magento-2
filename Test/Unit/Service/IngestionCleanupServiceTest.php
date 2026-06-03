@@ -182,7 +182,10 @@ class IngestionCleanupServiceTest extends TestCase
 
         $this->assertTrue($row->getObject(RowPlan::OBJECT_SOURCE)->isDelete());
         $this->assertTrue($row->getObject(RowPlan::OBJECT_DESTINATION)->isPreserve());
-        $this->assertTrue($row->getObject(RowPlan::OBJECT_AUTHENTICATION)->isDelete());
+        // Once the destination is preserved (shared with external task), the auth must
+        // ALSO be preserved because the preserved destination still references it.
+        // Deleting the auth here would break the external task's pipeline.
+        $this->assertTrue($row->getObject(RowPlan::OBJECT_AUTHENTICATION)->isPreserve());
     }
 
     public function testBuildPlanDemotesSharedAuthToPreserve(): void
@@ -246,6 +249,178 @@ class IngestionCleanupServiceTest extends TestCase
         $row = $plan->rows[0];
 
         $this->assertSame(['trf-1', 'trf-2'], $row->preservedTransformationIds);
+    }
+
+    // --- buildPlan: transaction-aware multi-row scenarios ---
+
+    public function testBuildPlanDeletesSharedAuthWhenAllReferencingRowsInScope(): void
+    {
+        // Two Magento rows share auth A1. Both destinations are in our plan -> auth
+        // should be deleted (the original bug: each row used to see the other as
+        // "external" and preserve the auth indefinitely).
+        $row1 = $this->mockTaskRow(
+            taskId: 'task-1',
+            sourceId: 'source-1',
+            destinationId: 'dest-1',
+            authId: 'auth-shared',
+            indexName: 'idx-1'
+        );
+        $row2 = $this->mockTaskRow(
+            taskId: 'task-2',
+            sourceId: 'source-2',
+            destinationId: 'dest-2',
+            authId: 'auth-shared',
+            indexName: 'idx-2'
+        );
+        $this->mockCollectionWith([$row1, $row2]);
+
+        $this->client->method('listTasks')
+            ->willReturnCallback(fn(...$args) => $this->multiRowListTasks($args, [
+                'source-1' => [['taskID' => 'task-1']],
+                'source-2' => [['taskID' => 'task-2']],
+                'dest-1'   => [['taskID' => 'task-1']],
+                'dest-2'   => [['taskID' => 'task-2']],
+            ]));
+
+        // Both our destinations reference auth-shared -> after dest-ID union, both are
+        // in "ours", no external references -> auth deletable.
+        $this->client->method('listDestinations')->willReturn([
+            'destinations' => [
+                ['destinationID' => 'dest-1'],
+                ['destinationID' => 'dest-2'],
+            ],
+        ]);
+        $this->stubNoTransformations();
+
+        $plan = $this->service->buildPlan([self::STORE_ID]);
+
+        $this->assertCount(2, $plan->rows);
+        foreach ($plan->rows as $row) {
+            $this->assertTrue(
+                $row->getObject(RowPlan::OBJECT_AUTHENTICATION)->isDelete(),
+                "Auth must be DELETE on row {$row->indexName} when all referencing destinations are in scope"
+            );
+        }
+    }
+
+    public function testBuildPlanPreservesAuthWhenReferencedByDestinationOutsidePlan(): void
+    {
+        // Same setup as above, but listDestinations(authID) also returns a third
+        // destination that's NOT in our plan -> truly external reference -> auth preserved.
+        $row1 = $this->mockTaskRow(
+            taskId: 'task-1',
+            sourceId: 'source-1',
+            destinationId: 'dest-1',
+            authId: 'auth-shared',
+            indexName: 'idx-1'
+        );
+        $row2 = $this->mockTaskRow(
+            taskId: 'task-2',
+            sourceId: 'source-2',
+            destinationId: 'dest-2',
+            authId: 'auth-shared',
+            indexName: 'idx-2'
+        );
+        $this->mockCollectionWith([$row1, $row2]);
+
+        $this->client->method('listTasks')
+            ->willReturnCallback(fn(...$args) => $this->multiRowListTasks($args, [
+                'source-1' => [['taskID' => 'task-1']],
+                'source-2' => [['taskID' => 'task-2']],
+                'dest-1'   => [['taskID' => 'task-1']],
+                'dest-2'   => [['taskID' => 'task-2']],
+            ]));
+
+        $this->client->method('listDestinations')->willReturn([
+            'destinations' => [
+                ['destinationID' => 'dest-1'],
+                ['destinationID' => 'dest-2'],
+                ['destinationID' => 'dest-external'],
+            ],
+        ]);
+        $this->stubNoTransformations();
+
+        $plan = $this->service->buildPlan([self::STORE_ID]);
+
+        foreach ($plan->rows as $row) {
+            $this->assertTrue($row->getObject(RowPlan::OBJECT_AUTHENTICATION)->isPreserve());
+        }
+    }
+
+    public function testBuildPlanRunsAuthCheckAfterDestinationOverrides(): void
+    {
+        // Order assertion: listTasks(destinationID) (destination shared-ref check)
+        // must precede listDestinations(authenticationID) (auth shared-ref check) so
+        // the auth check sees the finalized destination delete set.
+        $task = $this->mockTaskRow();
+        $this->mockCollectionWith([$task]);
+
+        $callLog = [];
+        $this->client->method('listTasks')->willReturnCallback(
+            function (...$args) use (&$callLog) {
+                if (($args[6] ?? null) !== null) {
+                    $callLog[] = 'listTasks:destination';
+                } elseif (($args[4] ?? null) !== null) {
+                    $callLog[] = 'listTasks:source';
+                }
+                return ['tasks' => [['taskID' => self::TASK_ID]]];
+            }
+        );
+        $this->client->method('listDestinations')->willReturnCallback(
+            function () use (&$callLog) {
+                $callLog[] = 'listDestinations:auth';
+                return ['destinations' => [['destinationID' => self::DESTINATION_ID]]];
+            }
+        );
+        $this->stubNoTransformations();
+
+        $this->service->buildPlan([self::STORE_ID]);
+
+        $destIndex = array_search('listTasks:destination', $callLog, true);
+        $authIndex = array_search('listDestinations:auth', $callLog, true);
+        $this->assertNotFalse($destIndex, 'destination shared-ref check must be invoked');
+        $this->assertNotFalse($authIndex, 'auth shared-ref check must be invoked');
+        $this->assertLessThan($authIndex, $destIndex, 'destination check must precede auth check');
+    }
+
+    public function testBuildPlanDedupesSharedSourceDeleteWhenTwoRowsTargetSameSource(): void
+    {
+        // Defensive: if two rows happen to point at the same source (rare but
+        // possible), the source survives as a single delete in the count.
+        $row1 = $this->mockTaskRow(
+            taskId: 'task-1',
+            sourceId: 'source-shared',
+            destinationId: 'dest-1',
+            authId: 'auth-1',
+            indexName: 'idx-1'
+        );
+        $row2 = $this->mockTaskRow(
+            taskId: 'task-2',
+            sourceId: 'source-shared',
+            destinationId: 'dest-2',
+            authId: 'auth-2',
+            indexName: 'idx-2'
+        );
+        $this->mockCollectionWith([$row1, $row2]);
+
+        // listTasks(sourceID=[source-shared]) returns BOTH our tasks - they're both ours.
+        $this->client->method('listTasks')->willReturnCallback(
+            fn(...$args) => $this->multiRowListTasks($args, [
+                'source-shared' => [['taskID' => 'task-1'], ['taskID' => 'task-2']],
+                'dest-1'        => [['taskID' => 'task-1']],
+                'dest-2'        => [['taskID' => 'task-2']],
+            ])
+        );
+        $this->client->method('listDestinations')->willReturn(['destinations' => []]);
+        $this->stubNoTransformations();
+
+        $plan = $this->service->buildPlan([self::STORE_ID]);
+
+        // Both rows still mark source-shared as DELETE - the count dedup collapses them.
+        $this->assertTrue($plan->rows[0]->getObject(RowPlan::OBJECT_SOURCE)->isDelete());
+        $this->assertTrue($plan->rows[1]->getObject(RowPlan::OBJECT_SOURCE)->isDelete());
+        // 2 distinct tasks + 1 shared source + 2 distinct destinations + 2 distinct auths = 7
+        $this->assertSame(7, $plan->totalDeleteCount());
     }
 
     // --- execute: delete order and behavior ---
@@ -415,6 +590,25 @@ class IngestionCleanupServiceTest extends TestCase
     private function stubNoSharedTasks(): void
     {
         $this->stubListTasks();
+    }
+
+    /**
+     * Resolve a multi-row listTasks() call by looking at which filter axis was passed
+     * (sourceID at index 4, destinationID at index 6) and dispatching by the first ID
+     * in that array. Lets tests with multiple sources/destinations return different
+     * task lists per call.
+     *
+     * @param array<int, mixed> $args
+     * @param array<string, array<int, array<string, mixed>>> $byKey
+     * @return array{tasks: array<int, array<string, mixed>>}
+     */
+    private function multiRowListTasks(array $args, array $byKey): array
+    {
+        $sourceID = $args[4] ?? null;
+        $destinationID = $args[6] ?? null;
+        $key = is_array($sourceID) ? ($sourceID[0] ?? null)
+            : (is_array($destinationID) ? ($destinationID[0] ?? null) : null);
+        return ['tasks' => $byKey[$key] ?? []];
     }
 
     /**
