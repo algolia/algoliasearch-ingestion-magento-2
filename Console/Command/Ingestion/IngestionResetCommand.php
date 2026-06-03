@@ -66,7 +66,7 @@ class IngestionResetCommand extends AbstractIngestionCommand
                 self::OPTION_FORCE,
                 null,
                 InputOption::VALUE_NONE,
-                'With --api-cleanup, skip the confirmation prompt. Readonly safety checks always run.'
+                'Skip the confirmation prompt. With --api-cleanup, readonly safety checks always run.'
             ),
         ];
     }
@@ -87,24 +87,26 @@ class IngestionResetCommand extends AbstractIngestionCommand
             return Cli::RETURN_FAILURE;
         }
 
+        $force = (bool) $input->getOption(self::OPTION_FORCE);
+
         if ($input->getOption(self::OPTION_API_CLEANUP)) {
-            return $this->executeApiCleanup($filteredStoreIds, (bool) $input->getOption(self::OPTION_FORCE), $output);
+            return $this->executeApiCleanup($filteredStoreIds, $force, $output);
         }
 
-        return $this->executeLocalOnly($filteredStoreIds, $output);
+        return $this->executeLocalOnly($filteredStoreIds, $force, $output);
     }
 
     /**
      * @param int[] $filteredStoreIds
      * @throws LocalizedException
      */
-    private function executeLocalOnly(array $filteredStoreIds, OutputInterface $output): int
+    private function executeLocalOnly(array $filteredStoreIds, bool $force, OutputInterface $output): int
     {
         $output->writeln(
             '<comment>NOTE: This clears local cache only. No resources will be modified in Algolia.</comment>'
         );
 
-        if (!$this->confirmOperation('Reset confirmed', 'Operation cancelled')) {
+        if (!$force && !$this->confirmOperation('Reset confirmed', 'Operation cancelled')) {
             return Cli::RETURN_SUCCESS;
         }
 
