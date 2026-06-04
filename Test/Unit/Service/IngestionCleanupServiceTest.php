@@ -495,18 +495,20 @@ class IngestionCleanupServiceTest extends TestCase
 
         $this->client->method('deleteTask')->willReturn([]);
         $this->client->method('deleteSource')->willThrowException(new AlgoliaException('server error'));
+        // Destination + auth ARE still attempted after the source failure. The four
+        // delete types run as independent passes across the plan, so a failure in one
+        // type doesn't abort the others — we want to clean up as much as possible.
+        $this->client->method('deleteDestination')->willReturn([]);
+        $this->client->method('deleteAuthentication')->willReturn([]);
 
-        // Destination + auth must not be attempted after source failure
-        $this->client->expects($this->never())->method('deleteDestination');
-        $this->client->expects($this->never())->method('deleteAuthentication');
-
-        // Local row must not be invalidated when remote delete failed
+        // Local row must not be invalidated when ANY remote delete failed.
         $this->taskService->expects($this->never())->method('invalidateRow');
 
         $plan = new CleanupPlan([$rowPlan], [self::STORE_ID], new \DateTimeImmutable());
         $result = $this->service->execute($plan);
 
         $this->assertTrue($result->rows[0]->isFailure());
+        // First failure encountered when composing the row result is reported.
         $this->assertSame(RowPlan::OBJECT_SOURCE, $result->rows[0]->failedOnObject);
     }
 
@@ -533,6 +535,127 @@ class IngestionCleanupServiceTest extends TestCase
 
         $this->assertTrue($result->rows[0]->isSuccess());
         $this->assertSame(0, $result->rows[0]->deletedCount);
+    }
+
+    // --- execute: shared-resource dedup + delete ordering across rows ---
+
+    public function testExecuteDedupesSharedAuthDeleteToOneApiCall(): void
+    {
+        // Three rows share the same auth. Processing one row at a time would issue
+        // three deleteAuthentication calls, two of which would fail because the
+        // sibling destinations still exist. Running all destination deletes first
+        // and then a single auth delete avoids the failures and the redundant calls.
+        $row1 = $this->buildRowPlanFor('idx-1', 'task-1', 'source-1', 'dest-1', 'auth-shared');
+        $row2 = $this->buildRowPlanFor('idx-2', 'task-2', 'source-2', 'dest-2', 'auth-shared');
+        $row3 = $this->buildRowPlanFor('idx-3', 'task-3', 'source-3', 'dest-3', 'auth-shared');
+
+        $this->client->method('deleteTask')->willReturn([]);
+        $this->client->method('deleteSource')->willReturn([]);
+        $this->client->method('deleteDestination')->willReturn([]);
+
+        $this->client->expects($this->once())
+            ->method('deleteAuthentication')
+            ->with('auth-shared')
+            ->willReturn([]);
+
+        $plan = new CleanupPlan([$row1, $row2, $row3], [self::STORE_ID], new \DateTimeImmutable());
+        $result = $this->service->execute($plan);
+
+        $this->assertSame(3, $result->successCount());
+        $this->assertSame(0, $result->failureCount());
+    }
+
+    public function testExecuteDeletesAllDestinationsBeforeAttemptingSharedAuth(): void
+    {
+        // Order assertion that locks in the bug fix: every destination delete must
+        // precede the auth delete, otherwise the auth delete fails with "in-use by
+        // destinations [...]".
+        $row1 = $this->buildRowPlanFor('idx-1', 'task-1', 'source-1', 'dest-1', 'auth-shared');
+        $row2 = $this->buildRowPlanFor('idx-2', 'task-2', 'source-2', 'dest-2', 'auth-shared');
+
+        $callOrder = [];
+        $this->client->method('deleteTask')->willReturnCallback(function ($id) use (&$callOrder) {
+            $callOrder[] = "task:$id";
+        });
+        $this->client->method('deleteSource')->willReturnCallback(function ($id) use (&$callOrder) {
+            $callOrder[] = "source:$id";
+        });
+        $this->client->method('deleteDestination')->willReturnCallback(function ($id) use (&$callOrder) {
+            $callOrder[] = "destination:$id";
+        });
+        $this->client->method('deleteAuthentication')->willReturnCallback(function ($id) use (&$callOrder) {
+            $callOrder[] = "authentication:$id";
+        });
+
+        $plan = new CleanupPlan([$row1, $row2], [self::STORE_ID], new \DateTimeImmutable());
+        $this->service->execute($plan);
+
+        $authIndex = array_search('authentication:auth-shared', $callOrder, true);
+        $this->assertNotFalse($authIndex, 'authentication delete must be invoked');
+
+        $destinationIndices = array_keys(array_filter(
+            $callOrder,
+            fn($entry) => str_starts_with($entry, 'destination:')
+        ));
+        $this->assertNotEmpty($destinationIndices);
+        $this->assertLessThan(
+            $authIndex,
+            max($destinationIndices),
+            'every destination delete must complete before the auth delete'
+        );
+    }
+
+    public function testExecuteFailsAllRowsThatDependOnFailedSharedDelete(): void
+    {
+        // If a shared object's delete fails, every row that depends on it must be
+        // reported FAILED — single source of truth, no false-positive successes.
+        $row1 = $this->buildRowPlanFor('idx-1', 'task-1', 'source-shared', 'dest-1', 'auth-1');
+        $row2 = $this->buildRowPlanFor('idx-2', 'task-2', 'source-shared', 'dest-2', 'auth-2');
+
+        $this->client->method('deleteTask')->willReturn([]);
+        $this->client->method('deleteSource')
+            ->willThrowException(new AlgoliaException('source still in use'));
+        $this->client->method('deleteDestination')->willReturn([]);
+        $this->client->method('deleteAuthentication')->willReturn([]);
+
+        // Neither row should have its local cache invalidated when shared source fails.
+        $this->taskService->expects($this->never())->method('invalidateRow');
+
+        $plan = new CleanupPlan([$row1, $row2], [self::STORE_ID], new \DateTimeImmutable());
+        $result = $this->service->execute($plan);
+
+        $this->assertSame(0, $result->successCount());
+        $this->assertSame(2, $result->failureCount());
+        foreach ($result->rows as $row) {
+            $this->assertSame(RowPlan::OBJECT_SOURCE, $row->failedOnObject);
+        }
+    }
+
+    public function testExecuteSucceedsAllRowsWhenSharedAuthDeleteSucceeds(): void
+    {
+        // Mirrors the live-Warden bug report: 3 rows share an auth; with the fix
+        // all 3 are reported successful and all local rows are invalidated.
+        $row1 = $this->buildRowPlanFor('idx-1', 'task-1', 'source-1', 'dest-1', 'auth-shared');
+        $row2 = $this->buildRowPlanFor('idx-2', 'task-2', 'source-2', 'dest-2', 'auth-shared');
+        $row3 = $this->buildRowPlanFor('idx-3', 'task-3', 'source-3', 'dest-3', 'auth-shared');
+
+        $this->client->method('deleteTask')->willReturn([]);
+        $this->client->method('deleteSource')->willReturn([]);
+        $this->client->method('deleteDestination')->willReturn([]);
+        $this->client->method('deleteAuthentication')->willReturn([]);
+
+        $invalidated = [];
+        $this->taskService->method('invalidateRow')->willReturnCallback(
+            function ($task) use (&$invalidated) {
+                $invalidated[] = $task;
+            }
+        );
+
+        $plan = new CleanupPlan([$row1, $row2, $row3], [self::STORE_ID], new \DateTimeImmutable());
+        $result = $this->service->execute($plan);
+
+        $this->assertSame(3, $result->successCount());
+        $this->assertCount(3, $invalidated);
     }
 
     // --- Helpers ---
@@ -674,5 +797,38 @@ class IngestionCleanupServiceTest extends TestCase
             RowPlan::OBJECT_DESTINATION    => ObjectPlan::delete(self::DESTINATION_ID),
             RowPlan::OBJECT_AUTHENTICATION => ObjectPlan::delete(self::AUTH_ID),
         ]);
+    }
+
+    /**
+     * Build a multi-row scenario RowPlan with caller-specified IDs so several plans
+     * can coexist with shared resources (e.g. the same auth across rows).
+     */
+    private function buildRowPlanFor(
+        string $indexName,
+        string $taskId,
+        string $sourceId,
+        string $destinationId,
+        string $authId
+    ): RowPlan {
+        $task = $this->mockTaskRow(
+            taskId: $taskId,
+            sourceId: $sourceId,
+            destinationId: $destinationId,
+            authId: $authId,
+            indexName: $indexName
+        );
+        return new RowPlan(
+            $task,
+            self::STORE_ID,
+            $indexName,
+            IngestionTaskService::ORIGIN_MAGENTO,
+            'Magento',
+            [
+                RowPlan::OBJECT_TASK           => ObjectPlan::delete($taskId),
+                RowPlan::OBJECT_SOURCE         => ObjectPlan::delete($sourceId),
+                RowPlan::OBJECT_DESTINATION    => ObjectPlan::delete($destinationId),
+                RowPlan::OBJECT_AUTHENTICATION => ObjectPlan::delete($authId),
+            ]
+        );
     }
 }

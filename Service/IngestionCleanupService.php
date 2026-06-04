@@ -49,15 +49,155 @@ class IngestionCleanupService
     }
 
     /**
+     * Execute the plan one object type at a time across all rows in a store, in
+     * dependency order: every task delete first, then every source, then every
+     * destination, then every authentication.
+     *
+     * The alternative — processing one row at a time (delete this row's task, source,
+     * destination, auth, then move to the next row) — fails for shared resources.
+     * If three rows share the same authentication, the first row's auth-delete runs
+     * while the other two rows' destinations still reference it; Algolia rejects the
+     * call. Sequencing all destinations before any auth-delete avoids this and lets
+     * each unique (type, id) collapse to a single API call.
+     *
      * @throws AlgoliaException
      */
     public function execute(CleanupPlan $plan): CleanupResult
     {
+        $rowsByStore = [];
+        foreach ($plan->rows as $row) {
+            $rowsByStore[$row->storeId][] = $row;
+        }
+
+        // outcomes[storeId][type][id] = ['status' => 'success'|'failure', 'message' => ?string]
+        $outcomes = [];
+        foreach ($rowsByStore as $storeId => $rows) {
+            $client = $this->clientProvider->getClient($storeId);
+            $outcomes[$storeId] = $this->executeStoreBatch($client, $storeId, $rows);
+        }
+
         $results = [];
         foreach ($plan->rows as $row) {
-            $results[] = $this->executeRow($row);
+            $results[] = $this->buildRowResult($row, $outcomes[$row->storeId] ?? []);
         }
         return new CleanupResult($results);
+    }
+
+    /**
+     * Run distinct deletes for this store in dependency order: task -> source -> destination -> auth.
+     *
+     * @param RowPlan[] $rows
+     * @return array<string, array<string, array{status: string, message: ?string}>>
+     */
+    protected function executeStoreBatch(IngestionClient $client, int $storeId, array $rows): array
+    {
+        $outcomes = [];
+        foreach (RowPlan::OBJECT_TYPES as $type) {
+            foreach ($this->collectDeletesForType($rows, $type) as $id) {
+                $outcomes[$type][$id] = $this->attemptDelete($client, $type, $id, $storeId);
+            }
+        }
+        return $outcomes;
+    }
+
+    /**
+     * @param RowPlan[] $rows
+     * @return string[]
+     */
+    protected function collectDeletesForType(array $rows, string $type): array
+    {
+        $ids = [];
+        foreach ($rows as $row) {
+            $object = $row->getObject($type);
+            if ($object->canDelete()) {
+                $ids[$object->id] = true;
+            }
+        }
+        return array_keys($ids);
+    }
+
+    /**
+     * @return array{status: string, message: ?string}
+     */
+    protected function attemptDelete(IngestionClient $client, string $type, string $id, int $storeId): array
+    {
+        try {
+            $this->deleteRemoteObject($client, $type, $id);
+            return ['status' => RowResult::STATUS_SUCCESS, 'message' => null];
+        } catch (NotFoundException) {
+            return ['status' => RowResult::STATUS_SUCCESS, 'message' => null];
+        } catch (\Throwable $e) {
+            $this->logger->error('Ingestion cleanup failed on {type} delete: {message}', [
+                'type'    => $type,
+                'message' => $e->getMessage(),
+                'storeId' => $storeId,
+                'objectId' => $id,
+            ]);
+            return ['status' => RowResult::STATUS_FAILED, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Compose a per-row result by looking up the outcome of each of this row's deletes
+     * in the store-wide outcome map. The row is failed if ANY of its deletes failed;
+     * otherwise the local row is invalidated and the row reports success.
+     *
+     * @param array<string, array<string, array{status: string, message: ?string}>> $storeOutcomes
+     */
+    protected function buildRowResult(RowPlan $row, array $storeOutcomes): RowResult
+    {
+        $deleted = 0;
+        $preserved = count($row->preserves());
+        $firstFailureType = null;
+        $firstFailureMessage = null;
+
+        foreach (RowPlan::OBJECT_TYPES as $type) {
+            $object = $row->getObject($type);
+            if (!$object->canDelete()) {
+                continue;
+            }
+            $outcome = $storeOutcomes[$type][$object->id] ?? null;
+            if ($outcome === null) {
+                continue;
+            }
+            if ($outcome['status'] === RowResult::STATUS_SUCCESS) {
+                $deleted++;
+            } elseif ($firstFailureType === null) {
+                $firstFailureType = $type;
+                $firstFailureMessage = $outcome['message'];
+            }
+        }
+
+        if ($firstFailureType !== null) {
+            return new RowResult(
+                $row,
+                RowResult::STATUS_FAILED,
+                $deleted,
+                $preserved,
+                $firstFailureType,
+                $firstFailureMessage
+            );
+        }
+
+        try {
+            $this->taskService->invalidateRow($row->task);
+        } catch (\Throwable $e) {
+            $this->logger->error('Ingestion cleanup local invalidation failed: {message}', [
+                'message'   => $e->getMessage(),
+                'storeId'   => $row->storeId,
+                'indexName' => $row->indexName,
+            ]);
+            return new RowResult(
+                $row,
+                RowResult::STATUS_FAILED,
+                $deleted,
+                $preserved,
+                'local-row',
+                $e->getMessage()
+            );
+        }
+
+        return new RowResult($row, RowResult::STATUS_SUCCESS, $deleted, $preserved);
     }
 
     // ---- Phase 0: initial stage ----
@@ -432,65 +572,6 @@ class IngestionCleanupService
             $state['objects'],
             $state['preservedTransformationIds']
         );
-    }
-
-    /**
-     * @throws AlgoliaException
-     */
-    protected function executeRow(RowPlan $row): RowResult
-    {
-        $client = $this->clientProvider->getClient($row->storeId);
-        $deleted = 0;
-        $preserved = count($row->preserves());
-
-        foreach (RowPlan::OBJECT_TYPES as $type) {
-            $object = $row->getObject($type);
-            if (!$object->canDelete()) {
-                continue;
-            }
-
-            try {
-                $this->deleteRemoteObject($client, $type, $object->id);
-                $deleted++;
-            } catch (NotFoundException) {
-                $deleted++;
-            } catch (\Throwable $e) {
-                $this->logger->error('Ingestion cleanup failed on {type} delete: {message}', [
-                    'type'      => $type,
-                    'message'   => $e->getMessage(),
-                    'storeId'   => $row->storeId,
-                    'indexName' => $row->indexName,
-                ]);
-                return new RowResult(
-                    $row,
-                    RowResult::STATUS_FAILED,
-                    $deleted,
-                    $preserved,
-                    $type,
-                    $e->getMessage()
-                );
-            }
-        }
-
-        try {
-            $this->taskService->invalidateRow($row->task);
-        } catch (\Throwable $e) {
-            $this->logger->error('Ingestion cleanup local invalidation failed: {message}', [
-                'message'   => $e->getMessage(),
-                'storeId'   => $row->storeId,
-                'indexName' => $row->indexName,
-            ]);
-            return new RowResult(
-                $row,
-                RowResult::STATUS_FAILED,
-                $deleted,
-                $preserved,
-                'local-row',
-                $e->getMessage()
-            );
-        }
-
-        return new RowResult($row, RowResult::STATUS_SUCCESS, $deleted, $preserved);
     }
 
     protected function deleteRemoteObject(IngestionClient $client, string $type, string $id): void
