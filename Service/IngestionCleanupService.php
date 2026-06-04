@@ -2,7 +2,6 @@
 
 namespace Algolia\Ingestion\Service;
 
-use Algolia\AlgoliaSearch\Api\IngestionClient;
 use Algolia\AlgoliaSearch\Api\LoggerInterface;
 use Algolia\AlgoliaSearch\Exceptions\AlgoliaException;
 use Algolia\AlgoliaSearch\Exceptions\NotFoundException;
@@ -72,8 +71,7 @@ class IngestionCleanupService
         // outcomes[storeId][type][id] = ['status' => 'success'|'failure', 'message' => ?string]
         $outcomes = [];
         foreach ($rowsByStore as $storeId => $rows) {
-            $client = $this->clientProvider->getClient($storeId);
-            $outcomes[$storeId] = $this->executeStoreBatch($client, $storeId, $rows);
+            $outcomes[$storeId] = $this->executeStoreBatch($storeId, $rows);
         }
 
         $results = [];
@@ -89,12 +87,12 @@ class IngestionCleanupService
      * @param RowPlan[] $rows
      * @return array<string, array<string, array{status: string, message: ?string}>>
      */
-    protected function executeStoreBatch(IngestionClient $client, int $storeId, array $rows): array
+    protected function executeStoreBatch(int $storeId, array $rows): array
     {
         $outcomes = [];
         foreach (RowPlan::OBJECT_TYPES as $type) {
             foreach ($this->collectDeletesForType($rows, $type) as $id) {
-                $outcomes[$type][$id] = $this->attemptDelete($client, $type, $id, $storeId);
+                $outcomes[$type][$id] = $this->attemptDelete($storeId, $type, $id);
             }
         }
         return $outcomes;
@@ -119,10 +117,10 @@ class IngestionCleanupService
     /**
      * @return array{status: string, message: ?string}
      */
-    protected function attemptDelete(IngestionClient $client, string $type, string $id, int $storeId): array
+    protected function attemptDelete(int $storeId, string $type, string $id): array
     {
         try {
-            $this->deleteRemoteObject($client, $type, $id);
+            $this->deleteRemoteObject($storeId, $type, $id);
             return ['status' => RowResult::STATUS_SUCCESS, 'message' => null];
         } catch (NotFoundException) {
             return ['status' => RowResult::STATUS_SUCCESS, 'message' => null];
@@ -238,7 +236,6 @@ class IngestionCleanupService
         if ($origin === IngestionTaskService::ORIGIN_ALGOLIA) {
             return [
                 'task'                       => $task,
-                'client'                     => null,
                 'storeId'                    => $storeId,
                 'indexName'                  => $indexName,
                 'origin'                     => $origin,
@@ -252,15 +249,12 @@ class IngestionCleanupService
             ];
         }
 
-        $client = $this->clientProvider->getClient($storeId);
-
         $objects = $origin === IngestionTaskService::ORIGIN_HYBRID
-            ? $this->planForHybridRow($client, $storeId, $taskId, $sourceId, $destinationId, $authId)
+            ? $this->planForHybridRow($storeId, $taskId, $sourceId, $destinationId, $authId)
             : $this->planForMagentoRow($taskId, $sourceId, $destinationId, $authId);
 
         return [
             'task'                       => $task,
-            'client'                     => $client,
             'storeId'                    => $storeId,
             'indexName'                  => $indexName,
             'origin'                     => $origin,
@@ -272,8 +266,12 @@ class IngestionCleanupService
     /**
      * @return array<string, ObjectPlan>
      */
-    protected function planForMagentoRow(?string $taskId, ?string $sourceId, ?string $destinationId, ?string $authId): array
-    {
+    protected function planForMagentoRow(
+        ?string $taskId,
+        ?string $sourceId,
+        ?string $destinationId,
+        ?string $authId
+    ): array {
         return [
             RowPlan::OBJECT_TASK           => $this->initDelete($taskId),
             RowPlan::OBJECT_SOURCE         => $this->initDelete($sourceId),
@@ -290,19 +288,22 @@ class IngestionCleanupService
      * @return array<string, ObjectPlan>
      */
     protected function planForHybridRow(
-        IngestionClient $client,
         int $storeId,
         ?string $taskId,
         ?string $sourceId,
         ?string $destinationId,
         ?string $authId
     ): array {
-        $source        = $sourceId !== null ? $this->safeFetch(fn() => $client->getSource($sourceId)) : null;
-        $destination   = $destinationId !== null ? $this->safeFetch(fn() => $client->getDestination($destinationId)) : null;
+        $client = $this->clientProvider->getClient($storeId);
+        $source = $sourceId !== null ? $this->safeFetch(fn() => $client->getSource($sourceId)) : null;
+        $destination = $destinationId !== null
+            ? $this->safeFetch(fn() => $client->getDestination($destinationId))
+            : null;
         $pipelinePrefix = $this->taskService->getTaskPipelineName($storeId);
 
-        $sourceIsMerchant      = $source !== null && !str_starts_with((string) ($source['name'] ?? ''), $pipelinePrefix);
-        $destinationIsMerchant = $destination !== null && !str_starts_with((string) ($destination['name'] ?? ''), $pipelinePrefix);
+        $sourceIsMerchant = $source !== null && !str_starts_with((string)($source['name'] ?? ''), $pipelinePrefix);
+        $destinationIsMerchant = $destination !== null
+            && !str_starts_with((string)($destination['name'] ?? ''), $pipelinePrefix);
 
         $objects = [
             RowPlan::OBJECT_TASK => $this->initDelete($taskId),
@@ -387,8 +388,8 @@ class IngestionCleanupService
     {
         foreach ($stage as &$state) {
             $destPlan = $state['objects'][RowPlan::OBJECT_DESTINATION] ?? null;
-            if ($destPlan instanceof ObjectPlan && $destPlan->canDelete() && $state['client'] !== null) {
-                $state['preservedTransformationIds'] = $this->fetchTransformationIds($state['client'], $destPlan->id);
+            if ($destPlan instanceof ObjectPlan && $destPlan->canDelete()) {
+                $state['preservedTransformationIds'] = $this->fetchTransformationIds($state['storeId'], $destPlan->id);
             }
         }
     }
@@ -403,7 +404,7 @@ class IngestionCleanupService
     {
         $sourcePlan = $state['objects'][RowPlan::OBJECT_SOURCE];
         if ($sourcePlan->canDelete()
-            && $this->isSourceShared($state['client'], $sourcePlan->id, $ownTaskIds)) {
+            && $this->isSourceShared($state['storeId'], $sourcePlan->id, $ownTaskIds)) {
             $state['objects'][RowPlan::OBJECT_SOURCE] = ObjectPlan::preserve(
                 $sourcePlan->id,
                 'still referenced by external task'
@@ -419,7 +420,7 @@ class IngestionCleanupService
     {
         $destPlan = $state['objects'][RowPlan::OBJECT_DESTINATION];
         if ($destPlan->canDelete()
-            && $this->isDestinationShared($state['client'], $destPlan->id, $ownTaskIds)) {
+            && $this->isDestinationShared($state['storeId'], $destPlan->id, $ownTaskIds)) {
             $state['objects'][RowPlan::OBJECT_DESTINATION] = ObjectPlan::preserve(
                 $destPlan->id,
                 'still referenced by external task'
@@ -435,7 +436,7 @@ class IngestionCleanupService
     {
         $authPlan = $state['objects'][RowPlan::OBJECT_AUTHENTICATION];
         if ($authPlan->canDelete()
-            && $this->isAuthShared($state['client'], $authPlan->id, $ownDestIds)) {
+            && $this->isAuthShared($state['storeId'], $authPlan->id, $ownDestIds)) {
             $state['objects'][RowPlan::OBJECT_AUTHENTICATION] = ObjectPlan::preserve(
                 $authPlan->id,
                 'still referenced by external destination'
@@ -448,8 +449,9 @@ class IngestionCleanupService
     /**
      * @param string[] $ownTaskIds
      */
-    protected function isSourceShared(IngestionClient $client, string $sourceId, array $ownTaskIds): bool
+    protected function isSourceShared(int $storeId, string $sourceId, array $ownTaskIds): bool
     {
+        $client = $this->clientProvider->getClient($storeId);
         $response = $this->safeFetch(fn() => $client->listTasks(
             itemsPerPage: null,
             page: null,
@@ -463,8 +465,9 @@ class IngestionCleanupService
     /**
      * @param string[] $ownTaskIds
      */
-    protected function isDestinationShared(IngestionClient $client, string $destinationId, array $ownTaskIds): bool
+    protected function isDestinationShared(int $storeId, string $destinationId, array $ownTaskIds): bool
     {
+        $client = $this->clientProvider->getClient($storeId);
         $response = $this->safeFetch(fn() => $client->listTasks(
             itemsPerPage: null,
             page: null,
@@ -480,8 +483,9 @@ class IngestionCleanupService
     /**
      * @param string[] $ownDestIds
      */
-    protected function isAuthShared(IngestionClient $client, string $authId, array $ownDestIds): bool
+    protected function isAuthShared(int $storeId, string $authId, array $ownDestIds): bool
     {
+        $client = $this->clientProvider->getClient($storeId);
         $response = $this->safeFetch(fn() => $client->listDestinations(
             itemsPerPage: null,
             page: null,
@@ -529,8 +533,9 @@ class IngestionCleanupService
     /**
      * @return string[]
      */
-    protected function fetchTransformationIds(IngestionClient $client, string $destinationId): array
+    protected function fetchTransformationIds(int $storeId, string $destinationId): array
     {
+        $client = $this->clientProvider->getClient($storeId);
         $destination = $this->safeFetch(fn() => $client->getDestination($destinationId));
         if ($destination === null) {
             return [];
@@ -556,7 +561,7 @@ class IngestionCleanupService
         }
     }
 
-    // ---- Materialize and execute ----
+    // ---- Materialize ----
 
     /**
      * @param array<string, mixed> $state
@@ -574,8 +579,9 @@ class IngestionCleanupService
         );
     }
 
-    protected function deleteRemoteObject(IngestionClient $client, string $type, string $id): void
+    protected function deleteRemoteObject(int $storeId, string $type, string $id): void
     {
+        $client = $this->clientProvider->getClient($storeId);
         match ($type) {
             RowPlan::OBJECT_TASK           => $client->deleteTask($id),
             RowPlan::OBJECT_SOURCE         => $client->deleteSource($id),
