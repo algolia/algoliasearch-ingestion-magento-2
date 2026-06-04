@@ -1,25 +1,26 @@
 <?php
 
-namespace Algolia\Ingestion\Test\Unit\Model\Cleanup;
+namespace Algolia\Ingestion\Test\Unit\Helper;
 
 use Algolia\AlgoliaSearch\Test\TestCase;
+use Algolia\Ingestion\Helper\CleanupPlanCounter;
 use Algolia\Ingestion\Model\Cleanup\CleanupPlan;
 use Algolia\Ingestion\Model\Cleanup\ObjectPlan;
 use Algolia\Ingestion\Model\Cleanup\RowPlan;
 use Algolia\Ingestion\Model\IngestionTask;
 
-class CleanupPlanTest extends TestCase
+class CleanupPlanCounterTest extends TestCase
 {
-    public function testEmptyPlanHasZeroCounts(): void
+    public function testEmptyPlanReportsZeroCounts(): void
     {
         $plan = new CleanupPlan([], [], new \DateTimeImmutable());
 
         $this->assertTrue($plan->isEmpty());
-        $this->assertSame(0, $plan->totalDeleteCount());
-        $this->assertSame(0, $plan->totalPreserveCount());
+        $this->assertSame(0, CleanupPlanCounter::distinctDeleteCount($plan));
+        $this->assertSame(0, CleanupPlanCounter::distinctPreserveCount($plan));
     }
 
-    public function testTotalDeleteCountDedupsSharedObjectAcrossRows(): void
+    public function testDistinctDeleteCountDedupsSharedObjectAcrossRows(): void
     {
         // Two rows that both reference the same shared source. The count must collapse
         // the duplicate (type, id) entry so the summary line tells the truth.
@@ -40,10 +41,10 @@ class CleanupPlanTest extends TestCase
 
         // Raw object count would be 8 (4 per row x 2 rows). After dedup the shared
         // source-shared collapses to 1 -> 7 distinct (type, id) pairs.
-        $this->assertSame(7, $plan->totalDeleteCount());
+        $this->assertSame(7, CleanupPlanCounter::distinctDeleteCount($plan));
     }
 
-    public function testTotalPreserveCountDedupsSharedObjectAcrossRows(): void
+    public function testDistinctPreserveCountDedupsSharedObjectAcrossRows(): void
     {
         // Mirrors the screenshot scenario: three Magento rows all preserve the same
         // per-store auth. The summary should count it once, not three times.
@@ -57,10 +58,10 @@ class CleanupPlanTest extends TestCase
         $plan = new CleanupPlan($rows, [], new \DateTimeImmutable());
 
         // Raw preserve count would be 3 (one auth entry per row). Deduped: 1.
-        $this->assertSame(1, $plan->totalPreserveCount());
+        $this->assertSame(1, CleanupPlanCounter::distinctPreserveCount($plan));
     }
 
-    public function testTotalPreserveCountDedupesTransformationsByIdAcrossRows(): void
+    public function testDistinctPreserveCountDedupesTransformationsByIdAcrossRows(): void
     {
         // If two rows happen to surface the same transformation ID (the same
         // transformation attached to two destinations), the count should still
@@ -87,10 +88,10 @@ class CleanupPlanTest extends TestCase
         $plan = new CleanupPlan([$row1, $row2], [], new \DateTimeImmutable());
 
         // trf-shared, trf-1, trf-2 -> 3 distinct transformations.
-        $this->assertSame(3, $plan->totalPreserveCount());
+        $this->assertSame(3, CleanupPlanCounter::distinctPreserveCount($plan));
     }
 
-    public function testTotalDeleteCountIgnoresNullIds(): void
+    public function testDistinctDeleteCountIgnoresNullIds(): void
     {
         // A DELETE plan with a null id can occur in defensive paths. It must not
         // crash and must not contribute to the count.
@@ -103,7 +104,7 @@ class CleanupPlanTest extends TestCase
 
         $plan = new CleanupPlan([$row], [], new \DateTimeImmutable());
 
-        $this->assertSame(3, $plan->totalDeleteCount());
+        $this->assertSame(3, CleanupPlanCounter::distinctDeleteCount($plan));
     }
 
     /**

@@ -8,6 +8,7 @@ use Algolia\AlgoliaSearch\Exceptions\AlgoliaException;
 use Algolia\AlgoliaSearch\Exceptions\NotFoundException;
 use Algolia\AlgoliaSearch\Test\TestCase;
 use Algolia\Ingestion\Api\IngestionClientProviderInterface;
+use Algolia\Ingestion\Helper\CleanupPlanCounter;
 use Algolia\Ingestion\Model\IngestionTask;
 use Algolia\Ingestion\Model\ResourceModel\IngestionTask\Collection;
 use Algolia\Ingestion\Model\ResourceModel\IngestionTask\CollectionFactory;
@@ -420,7 +421,7 @@ class IngestionCleanupServiceTest extends TestCase
         $this->assertTrue($plan->rows[0]->getObject(RowPlan::OBJECT_SOURCE)->isDelete());
         $this->assertTrue($plan->rows[1]->getObject(RowPlan::OBJECT_SOURCE)->isDelete());
         // 2 distinct tasks + 1 shared source + 2 distinct destinations + 2 distinct auths = 7
-        $this->assertSame(7, $plan->totalDeleteCount());
+        $this->assertSame(7, CleanupPlanCounter::distinctDeleteCount($plan));
     }
 
     // --- execute: delete order and behavior ---

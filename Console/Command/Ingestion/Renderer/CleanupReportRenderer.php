@@ -3,6 +3,7 @@
 namespace Algolia\Ingestion\Console\Command\Ingestion\Renderer;
 
 use Algolia\AlgoliaSearch\Service\StoreNameFetcher;
+use Algolia\Ingestion\Helper\CleanupPlanCounter;
 use Algolia\Ingestion\Model\Cleanup\CleanupPlan;
 use Algolia\Ingestion\Model\Cleanup\CleanupResult;
 use Algolia\Ingestion\Model\Cleanup\ObjectPlan;
@@ -36,8 +37,8 @@ class CleanupReportRenderer
         $output->writeln(sprintf(
             'Summary: %d row(s) targeted; %d object(s) to delete; %d object(s) to preserve.',
             count($plan->rows),
-            $plan->totalDeleteCount(),
-            $plan->totalPreserveCount()
+            CleanupPlanCounter::distinctDeleteCount($plan),
+            CleanupPlanCounter::distinctPreserveCount($plan)
         ));
     }
 
