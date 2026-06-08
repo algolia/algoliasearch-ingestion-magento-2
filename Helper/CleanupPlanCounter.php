@@ -2,8 +2,8 @@
 
 namespace Algolia\Ingestion\Helper;
 
-use Algolia\Ingestion\Model\Cleanup\CleanupPlan;
-use Algolia\Ingestion\Model\Cleanup\ObjectPlan;
+use Algolia\Ingestion\Model\Cleanup\Plan\CleanupPlan;
+use Algolia\Ingestion\Model\Cleanup\Plan\ObjectPlan;
 
 /**
  * Stateless counts derived from a CleanupPlan. Lives outside the plan itself so the

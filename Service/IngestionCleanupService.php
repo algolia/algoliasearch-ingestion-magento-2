@@ -8,11 +8,11 @@ use Algolia\AlgoliaSearch\Exceptions\NotFoundException;
 use Algolia\Ingestion\Api\IngestionClientProviderInterface;
 use Algolia\Ingestion\Model\IngestionTask;
 use Algolia\Ingestion\Model\ResourceModel\IngestionTask\CollectionFactory;
-use Algolia\Ingestion\Model\Cleanup\CleanupPlan;
-use Algolia\Ingestion\Model\Cleanup\CleanupResult;
-use Algolia\Ingestion\Model\Cleanup\ObjectPlan;
-use Algolia\Ingestion\Model\Cleanup\RowPlan;
-use Algolia\Ingestion\Model\Cleanup\RowResult;
+use Algolia\Ingestion\Model\Cleanup\Plan\CleanupPlan;
+use Algolia\Ingestion\Model\Cleanup\Plan\ObjectPlan;
+use Algolia\Ingestion\Model\Cleanup\Plan\RowPlan;
+use Algolia\Ingestion\Model\Cleanup\Result\CleanupResult;
+use Algolia\Ingestion\Model\Cleanup\Result\RowResult;
 
 class IngestionCleanupService
 {

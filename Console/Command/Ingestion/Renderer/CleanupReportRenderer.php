@@ -4,11 +4,11 @@ namespace Algolia\Ingestion\Console\Command\Ingestion\Renderer;
 
 use Algolia\AlgoliaSearch\Service\StoreNameFetcher;
 use Algolia\Ingestion\Helper\CleanupPlanCounter;
-use Algolia\Ingestion\Model\Cleanup\CleanupPlan;
-use Algolia\Ingestion\Model\Cleanup\CleanupResult;
-use Algolia\Ingestion\Model\Cleanup\ObjectPlan;
-use Algolia\Ingestion\Model\Cleanup\RowPlan;
-use Algolia\Ingestion\Model\Cleanup\RowResult;
+use Algolia\Ingestion\Model\Cleanup\Plan\CleanupPlan;
+use Algolia\Ingestion\Model\Cleanup\Plan\ObjectPlan;
+use Algolia\Ingestion\Model\Cleanup\Plan\RowPlan;
+use Algolia\Ingestion\Model\Cleanup\Result\CleanupResult;
+use Algolia\Ingestion\Model\Cleanup\Result\RowResult;
 use Magento\Framework\Exception\NoSuchEntityException;
 use Symfony\Component\Console\Output\OutputInterface;
 

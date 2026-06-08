@@ -1,6 +1,6 @@
 <?php
 
-namespace Algolia\Ingestion\Model\Cleanup;
+namespace Algolia\Ingestion\Model\Cleanup\Plan;
 
 class ObjectPlan
 {

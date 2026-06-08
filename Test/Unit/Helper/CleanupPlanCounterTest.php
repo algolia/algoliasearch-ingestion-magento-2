@@ -4,9 +4,9 @@ namespace Algolia\Ingestion\Test\Unit\Helper;
 
 use Algolia\AlgoliaSearch\Test\TestCase;
 use Algolia\Ingestion\Helper\CleanupPlanCounter;
-use Algolia\Ingestion\Model\Cleanup\CleanupPlan;
-use Algolia\Ingestion\Model\Cleanup\ObjectPlan;
-use Algolia\Ingestion\Model\Cleanup\RowPlan;
+use Algolia\Ingestion\Model\Cleanup\Plan\CleanupPlan;
+use Algolia\Ingestion\Model\Cleanup\Plan\ObjectPlan;
+use Algolia\Ingestion\Model\Cleanup\Plan\RowPlan;
 use Algolia\Ingestion\Model\IngestionTask;
 
 class CleanupPlanCounterTest extends TestCase

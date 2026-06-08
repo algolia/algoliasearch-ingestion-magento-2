@@ -14,10 +14,10 @@ use Algolia\Ingestion\Model\ResourceModel\IngestionTask\Collection;
 use Algolia\Ingestion\Model\ResourceModel\IngestionTask\CollectionFactory;
 use Algolia\Ingestion\Service\IngestionCleanupService;
 use Algolia\Ingestion\Service\IngestionTaskService;
-use Algolia\Ingestion\Model\Cleanup\CleanupPlan;
-use Algolia\Ingestion\Model\Cleanup\ObjectPlan;
-use Algolia\Ingestion\Model\Cleanup\RowPlan;
-use Algolia\Ingestion\Model\Cleanup\RowResult;
+use Algolia\Ingestion\Model\Cleanup\Plan\CleanupPlan;
+use Algolia\Ingestion\Model\Cleanup\Plan\ObjectPlan;
+use Algolia\Ingestion\Model\Cleanup\Plan\RowPlan;
+use Algolia\Ingestion\Model\Cleanup\Result\RowResult;
 use PHPUnit\Framework\MockObject\MockObject;
 
 class IngestionCleanupServiceTest extends TestCase
