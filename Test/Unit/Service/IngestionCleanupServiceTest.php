@@ -482,7 +482,7 @@ class IngestionCleanupServiceTest extends TestCase
         $this->client->method('deleteAuthentication')->willReturn([]);
 
         $this->taskService->expects($this->once())
-            ->method('invalidateRow')
+            ->method('invalidate')
             ->with($rowPlan->task);
 
         $plan = new CleanupPlan([$rowPlan], [self::STORE_ID], new \DateTimeImmutable());
@@ -505,7 +505,7 @@ class IngestionCleanupServiceTest extends TestCase
         $this->client->method('deleteAuthentication')->willReturn([]);
 
         // Local row must not be invalidated when ANY remote delete failed.
-        $this->taskService->expects($this->never())->method('invalidateRow');
+        $this->taskService->expects($this->never())->method('invalidate');
 
         $plan = new CleanupPlan([$rowPlan], [self::STORE_ID], new \DateTimeImmutable());
         $result = $this->service->execute($plan);
@@ -530,7 +530,7 @@ class IngestionCleanupServiceTest extends TestCase
         $this->client->expects($this->never())->method('deleteAuthentication');
 
         $this->taskService->expects($this->once())
-            ->method('invalidateRow')
+            ->method('invalidate')
             ->with($rowPlan->task);
 
         $plan = new CleanupPlan([$rowPlan], [self::STORE_ID], new \DateTimeImmutable());
@@ -622,7 +622,7 @@ class IngestionCleanupServiceTest extends TestCase
         $this->client->method('deleteAuthentication')->willReturn([]);
 
         // Neither row should have its local cache invalidated when shared source fails.
-        $this->taskService->expects($this->never())->method('invalidateRow');
+        $this->taskService->expects($this->never())->method('invalidate');
 
         $plan = new CleanupPlan([$row1, $row2], [self::STORE_ID], new \DateTimeImmutable());
         $result = $this->service->execute($plan);
@@ -648,7 +648,7 @@ class IngestionCleanupServiceTest extends TestCase
         $this->client->method('deleteAuthentication')->willReturn([]);
 
         $invalidated = [];
-        $this->taskService->method('invalidateRow')->willReturnCallback(
+        $this->taskService->method('invalidate')->willReturnCallback(
             function ($task) use (&$invalidated) {
                 $invalidated[] = $task;
             }

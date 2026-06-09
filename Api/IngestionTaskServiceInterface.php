@@ -15,21 +15,22 @@ interface IngestionTaskServiceInterface
     public function getTaskId(IndexOptionsInterface $indexOptions): string;
 
     /**
-     * Invalidate the in-memory and persisted task record for the given
-     * index options.
+     * Invalidate a single in-memory and persisted task record. Use
+     * this variant when the caller already holds the IngestionTask
+     * (e.g. resource cleanup) and wants to wipe one row without
+     * enumerating the store.
      */
-    public function invalidate(IndexOptionsInterface $indexOptions): void;
+    public function invalidate(IngestionTask $task): void;
 
     /**
-     * Invalidate all cached task records for a store (e.g. on store
-     * config change or credential rotation).
+     * Invalidate the in-memory and persisted task record matching the
+     * given index options.
      */
-    public function invalidateByStoreId(int $storeId): void;
+    public function invalidateByIndex(IndexOptionsInterface $indexOptions): void;
 
     /**
-     * Invalidate a single in-memory and persisted task record by model.
-     * Used by callers that already hold the IngestionTask (e.g. resource
-     * cleanup) and want to wipe one row without enumerating the store.
+     * Invalidate every in-memory and persisted task record for a
+     * store (e.g. on store config change or credential rotation).
      */
-    public function invalidateRow(IngestionTask $task): void;
+    public function invalidateByStore(int $storeId): void;
 }

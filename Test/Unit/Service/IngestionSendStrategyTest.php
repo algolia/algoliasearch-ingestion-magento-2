@@ -310,7 +310,7 @@ class IngestionSendStrategyTest extends TestCase
             ->willReturnOnConsecutiveCalls(self::TASK_ID, $newTaskId);
 
         $this->taskService->expects($this->once())
-            ->method('invalidate')
+            ->method('invalidateByIndex')
             ->with($indexOptions);
 
         $this->ingestionClient->expects($this->exactly(2))
@@ -341,7 +341,7 @@ class IngestionSendStrategyTest extends TestCase
             ->willReturn(self::TASK_ID);
 
         $this->taskService->expects($this->once())
-            ->method('invalidate')
+            ->method('invalidateByIndex')
             ->with($indexOptions);
 
         $callCount = 0;
@@ -380,7 +380,7 @@ class IngestionSendStrategyTest extends TestCase
             ->willThrowException(new NotFoundException('Task not found', 404));
 
         $this->taskService->expects($this->once())
-            ->method('invalidate')
+            ->method('invalidateByIndex')
             ->with($indexOptions);
 
         $this->configHelper->method('isFallbackEnabled')->willReturn(true);
@@ -426,7 +426,7 @@ class IngestionSendStrategyTest extends TestCase
             ->willReturn(self::INDEX_NAME);
 
         $this->taskService->method('getTaskId')->willReturn(self::TASK_ID);
-        $this->taskService->expects($this->once())->method('invalidate')->with($indexOptions);
+        $this->taskService->expects($this->once())->method('invalidateByIndex')->with($indexOptions);
 
         $callCount = 0;
         $this->ingestionClient->method('push')

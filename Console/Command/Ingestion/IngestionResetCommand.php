@@ -171,7 +171,7 @@ class IngestionResetCommand extends AbstractIngestionCommand
             $storeName = "store $storeId";
         }
 
-        $this->taskService->invalidateByStoreId($storeId);
+        $this->taskService->invalidateByStore($storeId);
         $output->writeln("<info>✓ Cleared cache for $storeName (store $storeId)</info>");
     }
 }

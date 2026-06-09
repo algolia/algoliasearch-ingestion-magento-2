@@ -44,7 +44,7 @@ class TaskInvalidationObserverTest extends TestCase
         ]);
 
         $this->taskService->expects($this->once())
-            ->method('invalidateByStoreId')
+            ->method('invalidateByStore')
             ->with(1);
 
         $this->storeManager->expects($this->never())->method('getWebsite');
@@ -73,7 +73,7 @@ class TaskInvalidationObserverTest extends TestCase
 
         $invalidated = [];
         $this->taskService->expects($this->exactly(2))
-            ->method('invalidateByStoreId')
+            ->method('invalidateByStore')
             ->willReturnCallback(function (int $storeId) use (&$invalidated): void {
                 $invalidated[] = $storeId;
             });
@@ -101,7 +101,7 @@ class TaskInvalidationObserverTest extends TestCase
             ]);
 
         $this->taskService->expects($this->exactly(2))
-            ->method('invalidateByStoreId');
+            ->method('invalidateByStore');
 
         $this->observer->execute($magentoObserver);
     }
@@ -112,7 +112,7 @@ class TaskInvalidationObserverTest extends TestCase
     {
         $magentoObserver = $this->mockObserver(['store' => '1', 'website' => '']);
 
-        $this->taskService->expects($this->never())->method('invalidateByStoreId');
+        $this->taskService->expects($this->never())->method('invalidateByStore');
         $this->storeManager->expects($this->never())->method('getStores');
 
         $this->observer->execute($magentoObserver);
@@ -126,7 +126,7 @@ class TaskInvalidationObserverTest extends TestCase
             'changed_paths' => [self::UNWATCHED_PATH],
         ]);
 
-        $this->taskService->expects($this->never())->method('invalidateByStoreId');
+        $this->taskService->expects($this->never())->method('invalidateByStore');
         $this->storeManager->expects($this->never())->method('getStores');
 
         $this->observer->execute($magentoObserver);
@@ -144,7 +144,7 @@ class TaskInvalidationObserverTest extends TestCase
         ]);
 
         $this->taskService->expects($this->once())
-            ->method('invalidateByStoreId')
+            ->method('invalidateByStore')
             ->with(1);
 
         $this->observer->execute($magentoObserver);
@@ -164,7 +164,7 @@ class TaskInvalidationObserverTest extends TestCase
             'changed_paths' => [self::WATCHED_PATH],
         ]);
 
-        $this->taskService->expects($this->never())->method('invalidateByStoreId');
+        $this->taskService->expects($this->never())->method('invalidateByStore');
 
         $observer->execute($magentoObserver);
     }

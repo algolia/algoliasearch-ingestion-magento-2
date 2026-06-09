@@ -506,7 +506,7 @@ class IngestionTaskServiceTest extends TestCase
 
     // --- Invalidation ---
 
-    public function testInvalidateRemovesSingleCacheEntry(): void
+    public function testInvalidateByIndexRemovesSingleCacheEntry(): void
     {
         $this->setupEmptyCollection();
         $this->setPrivateProperty($this->service, 'cache', [
@@ -516,14 +516,14 @@ class IngestionTaskServiceTest extends TestCase
             ],
         ]);
 
-        $this->service->invalidate($this->mockIndexOptions());
+        $this->service->invalidateByIndex($this->mockIndexOptions());
 
         $cache = $this->getPrivateProperty($this->service, 'cache');
         $this->assertArrayNotHasKey(self::INDEX_NAME, $cache[self::STORE_ID] ?? []);
         $this->assertArrayHasKey('other_index', $cache[self::STORE_ID] ?? []);
     }
 
-    public function testInvalidateDeletesDatabaseRecord(): void
+    public function testInvalidateByIndexDeletesDatabaseRecord(): void
     {
         $taskModel = $this->mockPersistedTaskModel(self::TASK_ID);
         $this->setupCollectionReturning($taskModel);
@@ -532,19 +532,19 @@ class IngestionTaskServiceTest extends TestCase
             ->method('delete')
             ->with($taskModel);
 
-        $this->service->invalidate($this->mockIndexOptions());
+        $this->service->invalidateByIndex($this->mockIndexOptions());
     }
 
-    public function testInvalidateIsNoopWhenNoDatabaseRecordExists(): void
+    public function testInvalidateByIndexIsNoopWhenNoDatabaseRecordExists(): void
     {
         $this->setupEmptyCollection();
 
         $this->taskResource->expects($this->never())->method('delete');
 
-        $this->service->invalidate($this->mockIndexOptions());
+        $this->service->invalidateByIndex($this->mockIndexOptions());
     }
 
-    public function testInvalidateByStoreIdDeletesAllDatabaseRecordsForStore(): void
+    public function testInvalidateByStoreDeletesAllDatabaseRecordsForStore(): void
     {
         $task1 = $this->createMock(IngestionTask::class);
         $task2 = $this->createMock(IngestionTask::class);
@@ -576,12 +576,12 @@ class IngestionTaskServiceTest extends TestCase
                 return $this->taskResource;
             });
 
-        $this->service->invalidateByStoreId(self::STORE_ID);
+        $this->service->invalidateByStore(self::STORE_ID);
 
         $this->assertSame([$task1, $task2], $deleted);
     }
 
-    public function testInvalidateByStoreIdClearsAllEntriesForStore(): void
+    public function testInvalidateByStoreClearsAllEntriesForStore(): void
     {
         $this->setPrivateProperty($this->service, 'cache', [
             self::STORE_ID => [
@@ -593,7 +593,7 @@ class IngestionTaskServiceTest extends TestCase
             ],
         ]);
 
-        $this->service->invalidateByStoreId(self::STORE_ID);
+        $this->service->invalidateByStore(self::STORE_ID);
 
         $cache = $this->getPrivateProperty($this->service, 'cache');
         $this->assertEmpty($cache[self::STORE_ID] ?? []);
@@ -620,7 +620,7 @@ class IngestionTaskServiceTest extends TestCase
         $this->assertArrayNotHasKey(self::TMP_INDEX_NAME, $cache[self::STORE_ID] ?? []);
     }
 
-    public function testInvalidateResolvesProductionNameForTempIndex(): void
+    public function testInvalidateByIndexResolvesProductionNameForTempIndex(): void
     {
         $this->setupEmptyCollection();
         $this->setPrivateProperty($this->service, 'cache', [
@@ -631,7 +631,7 @@ class IngestionTaskServiceTest extends TestCase
         ]);
 
         $tempOptions = $this->mockIndexOptions(self::STORE_ID, self::TMP_INDEX_NAME, true);
-        $this->service->invalidate($tempOptions);
+        $this->service->invalidateByIndex($tempOptions);
 
         $cache = $this->getPrivateProperty($this->service, 'cache');
         $this->assertArrayNotHasKey(self::INDEX_NAME, $cache[self::STORE_ID] ?? []);

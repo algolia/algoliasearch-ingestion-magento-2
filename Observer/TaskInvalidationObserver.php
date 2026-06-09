@@ -43,7 +43,7 @@ class TaskInvalidationObserver implements ObserverInterface
             return;
         }
         foreach ($this->resolveAffectedStoreIds($observer) as $storeId) {
-            $this->taskService->invalidateByStoreId($storeId);
+            $this->taskService->invalidateByStore($storeId);
         }
     }
 }
