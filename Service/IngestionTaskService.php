@@ -121,9 +121,6 @@ class IngestionTaskService implements IngestionTaskServiceInterface
     {
         $storeId = $indexOptions->getStoreId();
         $indexName = $this->resolveProductionIndexName($indexOptions);
-        // Defensive: handle the orphan case where the cache holds an
-        // entry whose DB row was already removed out-of-band.
-        unset($this->cache[$storeId][$indexName]);
 
         $dbTask = $this->loadFromDatabase($storeId, $indexName);
         if ($dbTask !== null) {
@@ -136,10 +133,6 @@ class IngestionTaskService implements IngestionTaskServiceInterface
      */
     public function invalidateByStore(int $storeId): void
     {
-        // Defensive: handle orphan cache entries whose DB rows were
-        // already removed out-of-band.
-        $this->cache[$storeId] = [];
-
         $collection = $this->collectionFactory->create();
         $collection->addFieldToFilter('store_id', $storeId);
         foreach ($collection as $task) {
