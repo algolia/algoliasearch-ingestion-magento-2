@@ -357,11 +357,13 @@ class IngestionCleanupServiceTest extends TestCase
         $this->mockCollectionWith([$task]);
 
         $callLog = [];
+
+        // Log the operations called in the order they are called
         $this->client->method('listTasks')->willReturnCallback(
             function (...$args) use (&$callLog) {
-                if (($args[6] ?? null) !== null) {
+                if (($args[6] ?? null) !== null) { // arg 6 is destinationID
                     $callLog[] = 'listTasks:destination';
-                } elseif (($args[4] ?? null) !== null) {
+                } elseif (($args[4] ?? null) !== null) { // arg 4 is sourceID
                     $callLog[] = 'listTasks:source';
                 }
                 return ['tasks' => [['taskID' => self::TASK_ID]]];
@@ -417,7 +419,7 @@ class IngestionCleanupServiceTest extends TestCase
 
         $plan = $this->service->buildPlan([self::STORE_ID]);
 
-        // Both rows still mark source-shared as DELETE - the count dedup collapses them.
+        // Both rows still mark source-shared as DELETE - the count dedupe collapses them.
         $this->assertTrue($plan->rows[0]->getObject(RowPlan::OBJECT_SOURCE)->isDelete());
         $this->assertTrue($plan->rows[1]->getObject(RowPlan::OBJECT_SOURCE)->isDelete());
         // 2 distinct tasks + 1 shared source + 2 distinct destinations + 2 distinct auths = 7
@@ -538,7 +540,7 @@ class IngestionCleanupServiceTest extends TestCase
         $this->assertSame(0, $result->rows[0]->deletedCount);
     }
 
-    // --- execute: shared-resource dedup + delete ordering across rows ---
+    // --- execute: shared-resource dedupe + delete ordering across rows ---
 
     public function testExecuteDedupesSharedAuthDeleteToOneApiCall(): void
     {
@@ -717,14 +719,15 @@ class IngestionCleanupServiceTest extends TestCase
     }
 
     /**
-     * Resolve a multi-row listTasks() call by looking at which filter axis was passed
+     * Mocks a multi-row listTasks() call by looking at which filter axis was passed
      * (sourceID at index 4, destinationID at index 6) and dispatching by the first ID
      * in that array. Lets tests with multiple sources/destinations return different
      * task lists per call.
      *
-     * @param array<int, mixed> $args
+     * @param array<int, mixed> $args The array of args passed to listTasks
      * @param array<string, array<int, array<string, mixed>>> $byKey
-     * @return array{tasks: array<int, array<string, mixed>>}
+     *      A lookup table to determine return value based on what was passed
+     * @return array{tasks: array<int, array<string, mixed>>} The mocked return value
      */
     private function multiRowListTasks(array $args, array $byKey): array
     {
