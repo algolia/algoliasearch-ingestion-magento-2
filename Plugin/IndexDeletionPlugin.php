@@ -17,6 +17,6 @@ class IndexDeletionPlugin
         mixed $result,
         IndexOptionsInterface $indexOptions
     ): void {
-        $this->taskService->invalidate($indexOptions);
+        $this->taskService->invalidateByIndex($indexOptions);
     }
 }

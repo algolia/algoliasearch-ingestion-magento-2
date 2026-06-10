@@ -85,7 +85,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
                 'taskId'    => $taskId,
                 'indexName' => $indexName,
             ]);
-            $this->taskResource->delete($dbTask);
+            $this->invalidate($dbTask);
         }
 
         $taskId = $this->discoverExistingTask($storeId, $indexName, $entityType)
@@ -96,44 +96,48 @@ class IngestionTaskService implements IngestionTaskServiceInterface
     }
 
     /**
+     * Single funnel for task invalidation: clears the in-memory cache
+     * slot keyed by the task's store_id / index_name and deletes the
+     * persisted row. All other invalidation paths in this service
+     * (including the lookup-style variants and getTaskId's stale-cache
+     * cleanup branch) delegate here so there is exactly one place that
+     * issues taskResource->delete().
+     *
      * @throws \Exception
      */
-    public function invalidate(IndexOptionsInterface $indexOptions): void
-    {
-        $storeId = $indexOptions->getStoreId();
-        $indexName = $this->resolveProductionIndexName($indexOptions);
-        unset($this->cache[$storeId][$indexName]);
-
-        $dbTask = $this->loadFromDatabase($storeId, $indexName);
-        if ($dbTask !== null) {
-            $this->taskResource->delete($dbTask);
-        }
-    }
-
-    /**
-     * @throws \Exception
-     */
-    public function invalidateByStoreId(int $storeId): void
-    {
-        $this->cache[$storeId] = [];
-
-        $collection = $this->collectionFactory->create();
-        $collection->addFieldToFilter('store_id', $storeId);
-        foreach ($collection as $task) {
-            $this->taskResource->delete($task);
-        }
-    }
-
-    /**
-     * @throws \Exception
-     */
-    public function invalidateRow(IngestionTask $task): void
+    public function invalidate(IngestionTask $task): void
     {
         $storeId = (int) $task->getData('store_id');
         $indexName = (string) $task->getData('index_name');
         unset($this->cache[$storeId][$indexName]);
 
         $this->taskResource->delete($task);
+    }
+
+    /**
+     * @throws \Exception
+     */
+    public function invalidateByIndex(IndexOptionsInterface $indexOptions): void
+    {
+        $storeId = $indexOptions->getStoreId();
+        $indexName = $this->resolveProductionIndexName($indexOptions);
+
+        $dbTask = $this->loadFromDatabase($storeId, $indexName);
+        if ($dbTask !== null) {
+            $this->invalidate($dbTask);
+        }
+    }
+
+    /**
+     * @throws \Exception
+     */
+    public function invalidateByStore(int $storeId): void
+    {
+        $collection = $this->collectionFactory->create();
+        $collection->addFieldToFilter('store_id', $storeId);
+        foreach ($collection as $task) {
+            $this->invalidate($task);
+        }
     }
 
     protected function loadFromCache(int $storeId, string $indexName): ?string

@@ -1,6 +1,8 @@
 <?php
 
-namespace Algolia\Ingestion\Model\Cleanup;
+namespace Algolia\Ingestion\Model\Cleanup\Result;
+
+use Algolia\Ingestion\Model\Cleanup\Plan\RowPlan;
 
 class RowResult
 {
