@@ -178,7 +178,7 @@ class IngestionCleanupService
         }
 
         try {
-            $this->taskService->invalidateRow($row->task);
+            $this->taskService->invalidate($row->task);
         } catch (\Throwable $e) {
             $this->logger->error('Ingestion cleanup local invalidation failed: {message}', [
                 'message'   => $e->getMessage(),

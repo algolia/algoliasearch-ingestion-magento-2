@@ -80,7 +80,7 @@ class IngestionSendStrategy implements SendStrategyInterface
                 'indexName'   => $indexOptions->getIndexName(),
                 'isTemporary' => $indexOptions->isTemporaryIndex(),
             ]);
-            $this->taskService->invalidate($indexOptions);
+            $this->taskService->invalidateByIndex($indexOptions);
             return $this->pushActionGroup($indexOptions, $action, $records);
         }
     }

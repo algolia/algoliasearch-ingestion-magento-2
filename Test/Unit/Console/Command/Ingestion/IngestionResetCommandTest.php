@@ -57,7 +57,7 @@ class IngestionResetCommandTest extends AbstractIngestionCommandTestCase
         $cmd = $this->makePartial(['setAreaCode']);
 
         $this->connection->expects($this->never())->method('truncateTable');
-        $this->taskService->expects($this->never())->method('invalidateByStoreId');
+        $this->taskService->expects($this->never())->method('invalidateByStore');
 
         $tester = new CommandTester($cmd);
         $tester->setInputs(['n']);
@@ -74,7 +74,7 @@ class IngestionResetCommandTest extends AbstractIngestionCommandTestCase
         $this->connection->expects($this->once())
             ->method('truncateTable')
             ->with(IngestionTaskResource::TABLE_NAME);
-        $this->taskService->expects($this->never())->method('invalidateByStoreId');
+        $this->taskService->expects($this->never())->method('invalidateByStore');
 
         $cmd = $this->makePartial(['setAreaCode']);
 
@@ -89,7 +89,7 @@ class IngestionResetCommandTest extends AbstractIngestionCommandTestCase
     {
         $this->connection->expects($this->never())->method('truncateTable');
         $this->taskService->expects($this->once())
-            ->method('invalidateByStoreId')
+            ->method('invalidateByStore')
             ->with(1);
 
         $cmd = $this->makePartial(['setAreaCode']);
@@ -107,7 +107,7 @@ class IngestionResetCommandTest extends AbstractIngestionCommandTestCase
 
         $seen = [];
         $this->taskService->expects($this->exactly(3))
-            ->method('invalidateByStoreId')
+            ->method('invalidateByStore')
             ->willReturnCallback(function (int $id) use (&$seen) {
                 $seen[] = $id;
             });
@@ -129,7 +129,7 @@ class IngestionResetCommandTest extends AbstractIngestionCommandTestCase
             ->willThrowException(new NoSuchEntityException());
 
         $this->taskService->expects($this->once())
-            ->method('invalidateByStoreId')
+            ->method('invalidateByStore')
             ->with(42);
 
         $cmd = $this->makePartial(['setAreaCode']);
@@ -280,7 +280,7 @@ class IngestionResetCommandTest extends AbstractIngestionCommandTestCase
     public function testExecuteReturnsFailureOnInvalidStoreIdWithoutMutating(): void
     {
         $this->connection->expects($this->never())->method('truncateTable');
-        $this->taskService->expects($this->never())->method('invalidateByStoreId');
+        $this->taskService->expects($this->never())->method('invalidateByStore');
 
         $cmd = $this->makePartial(['setAreaCode']);
 
