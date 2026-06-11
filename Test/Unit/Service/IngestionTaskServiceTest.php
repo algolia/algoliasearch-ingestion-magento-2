@@ -399,10 +399,14 @@ class IngestionTaskServiceTest extends TestCase
             $this->discoveryTask('task-magento', 'src-magento'),
             $this->discoveryTask('task-merchant', 'src-merchant'),
         ]);
-        $this->mockSourcesByName([
-            'src-magento'  => $this->magentoSourceName(),
-            'src-merchant' => 'Merchant Dashboard Source',
-        ]);
+
+        // Asserting getSource fires exactly once - only for src-magento - proves both that we 
+        // never fell through to the $tasks[0] fallback (which would have inspected src-merchant)
+        // and that persistence reused the pre-fetched source instead of re-fetching it.
+        $this->ingestionClient->expects($this->once())
+            ->method('getSource')
+            ->with('src-magento')
+            ->willReturn(['name' => $this->magentoSourceName()]);
 
         $this->expectPersistedTask('task-magento', IngestionTaskService::ORIGIN_MAGENTO);
 
@@ -412,8 +416,8 @@ class IngestionTaskServiceTest extends TestCase
     }
 
     /**
-     * Regression for the bug: listTasks returns the merchant task first, but discovery must still
-     * latch onto the Magento-owned task. Selection is deterministic, independent of response order.
+     * listTasks returns the merchant task first, but discovery must still latch onto the 
+     * Magento-owned task. Selection is deterministic, independent of response order.
      */
     public function testDiscoveryPrefersMagentoTaskWhenListedSecond(): void
     {
@@ -421,10 +425,13 @@ class IngestionTaskServiceTest extends TestCase
             $this->discoveryTask('task-merchant', 'src-merchant'),
             $this->discoveryTask('task-magento', 'src-magento'),
         ]);
-        $this->mockSourcesByName([
-            'src-merchant' => 'Merchant Dashboard Source',
-            'src-magento'  => $this->magentoSourceName(),
-        ]);
+
+        // Exactly two getSource calls - never a third - proves the $tasks[0] fallback path 
+        // did not fire and persistDiscoveredTask reused the pre-fetched source rather than re-fetching.
+        $this->ingestionClient->expects($this->exactly(2))
+            ->method('getSource')
+            ->willReturnCallback(fn(string $id): array =>
+                ['name' => $id === 'src-magento' ? $this->magentoSourceName() : 'Merchant Dashboard Source']);
 
         $this->expectPersistedTask('task-magento', IngestionTaskService::ORIGIN_MAGENTO);
 
@@ -452,6 +459,18 @@ class IngestionTaskServiceTest extends TestCase
         $this->assertSame('task-merchant-1', $result);
     }
 
+    /**
+     * A disabled Magento task is treated as deliberate admin intent ("pause ingestion for this
+     * pipeline"), not as an invitation to find another task. Once discovery identifies the
+     * Magento-owned candidate, its disabled state is authoritative: we throw TaskDisabledException
+     * and stop, rather than silently latching onto the enabled merchant task.
+     *
+     * Falling back to the merchant task here would be actively harmful: ingestion would resume
+     * against a destination/task the admin never sanctioned, masking the intended pause and
+     * pushing Magento data through a merchant-owned pipeline. Throwing surfaces the disabled state
+     * so the admin re-enables the canonical task in the dashboard when they want ingestion to
+     * resume. The reference is preserved either way - we never delete or replace it on disable.
+     */
     public function testDiscoveryThrowsWhenMagentoCandidateIsDisabledEvenIfMerchantIsEnabled(): void
     {
         $this->setupMagentoDestinationWithTasks([
