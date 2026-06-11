@@ -3,6 +3,7 @@
 namespace Algolia\Ingestion\Service;
 
 use Algolia\AlgoliaSearch\Api\Data\IndexOptionsInterface;
+use Algolia\AlgoliaSearch\Api\IngestionClient;
 use Algolia\AlgoliaSearch\Api\LoggerInterface;
 use Algolia\AlgoliaSearch\Exceptions\AlgoliaException;
 use Algolia\AlgoliaSearch\Exceptions\NotFoundException;
@@ -242,8 +243,24 @@ class IngestionTaskService implements IngestionTaskServiceInterface
                 );
                 $tasks = $tasksResponse['tasks'] ?? [];
 
-                if (!empty($tasks) && $this->isTaskUsable($storeId, $tasks[0])) {
-                    return $this->persistDiscoveredTask($storeId, $indexName, $tasks[0], $entityType);
+                if (!empty($tasks)) {
+                    // When multiple tasks share this Magento-named destination (e.g. a
+                    // merchant-created task alongside ours), prefer the one whose source is
+                    // also Magento-owned so discovery latches onto the canonical task
+                    // deterministically, regardless of listTasks ordering.
+                    $magento = $this->findMagentoPreferredTask($client, $tasks, $storeId, $entityType);
+                    if ($magento !== null) {
+                        [$task, $source] = $magento;
+                        if ($this->isTaskUsable($storeId, $task)) {
+                            return $this->persistDiscoveredTask($storeId, $indexName, $task, $entityType, $source);
+                        }
+                    }
+
+                    // No Magento-owned source among the candidates
+                    // HYBRID case (Magento destination with only merchant-owned task[s]).
+                    if ($this->isTaskUsable($storeId, $tasks[0])) {
+                        return $this->persistDiscoveredTask($storeId, $indexName, $tasks[0], $entityType);
+                    }
                 }
 
                 // Destination exists but has no usable push task — create source + task only
@@ -259,6 +276,54 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         } while ($page <= $nbPages);
 
         return null;
+    }
+
+    /**
+     * Find the first task in $tasks whose source is Magento-owned (its name matches the
+     * canonical Magento source name for this store/entity type). getSource is fetched at most
+     * once per unique sourceID. A 404 (or otherwise missing) source is treated as "not Magento"
+     * and the search continues to the next candidate.
+     *
+     * @param array<int, array<string, mixed>> $tasks
+     * @return array{0: array<string, mixed>, 1: array<string, mixed>}|null
+     *         The [task, source] tuple for the Magento-preferred candidate, or null if none match.
+     * @throws AlgoliaException
+     */
+    protected function findMagentoPreferredTask(
+        IngestionClient $client,
+        array $tasks,
+        int $storeId,
+        ?string $entityType
+    ): ?array {
+        $sourceCache = [];
+
+        foreach ($tasks as $task) {
+            $sourceId = $task['sourceID'] ?? null;
+            if ($sourceId === null) {
+                continue;
+            }
+
+            if (!array_key_exists($sourceId, $sourceCache)) {
+                try {
+                    $sourceCache[$sourceId] = $client->getSource($sourceId);
+                } catch (NotFoundException) {
+                    $sourceCache[$sourceId] = null;
+                }
+            }
+
+            $source = $sourceCache[$sourceId];
+            if (is_array($source) && $this->isMagentoOwnedSource($source, $storeId, $entityType)) {
+                return [$task, $source];
+            }
+        }
+
+        return null;
+    }
+
+    /** A source is Magento-owned when its name matches the canonical Magento source name. */
+    protected function isMagentoOwnedSource(array $source, int $storeId, ?string $entityType): bool
+    {
+        return ($source['name'] ?? null) === $this->getSourceName($storeId, $entityType);
     }
 
     /** Internal tasks and destinations are managed by the Ingestion API and not by the extension. */
@@ -328,9 +393,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         ?string $entityType
     ): int {
         $destOurs = ($destination['name'] ?? null) === $this->getDestinationName($storeId, $indexName);
-        $sourceOurs = $source === null
-            ? true
-            : ($source['name'] ?? null) === $this->getSourceName($storeId, $entityType);
+        $sourceOurs = $source === null || $this->isMagentoOwnedSource($source, $storeId, $entityType);
 
         if ($destOurs && $sourceOurs) {
             return self::ORIGIN_MAGENTO;
@@ -531,6 +594,9 @@ class IngestionTaskService implements IngestionTaskServiceInterface
      * Fetch the destination for the given task, extract its authenticationID, persist the task record, and
      * return the task UUID. Requires a separate GET request because listTasks does not return destination details.
      *
+     * Pass $preFetchedSource when the caller has already fetched the task's source (e.g. discovery's
+     * Magento-preferred selection) to avoid a duplicate getSource roundtrip.
+     *
      * @throws AlreadyExistsException
      * @throws AlgoliaException
      */
@@ -538,12 +604,13 @@ class IngestionTaskService implements IngestionTaskServiceInterface
         int $storeId,
         string $indexName,
         array $task,
-        ?string $entityType
+        ?string $entityType,
+        ?array $preFetchedSource = null
     ): string {
         $client = $this->clientProvider->getClient($storeId);
         $destination = $client->getDestination($task['destinationID']);
         $authenticationId = $destination['authenticationID'] ?? null;
-        $source = $client->getSource($task['sourceID']);
+        $source = $preFetchedSource ?? $client->getSource($task['sourceID']);
         $origin = $this->resolveOrigin($destination, $source, $storeId, $indexName, $entityType);
 
         $this->persistTask(
