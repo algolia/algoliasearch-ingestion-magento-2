@@ -391,6 +391,174 @@ class IngestionTaskServiceTest extends TestCase
         $this->assertSame(self::TASK_ID, $result);
     }
 
+    // --- Discovery: multi-task selection ---
+
+    public function testDiscoveryPrefersMagentoTaskWhenListedFirst(): void
+    {
+        $this->setupMagentoDestinationWithTasks([
+            $this->discoveryTask('task-magento', 'src-magento'),
+            $this->discoveryTask('task-merchant', 'src-merchant'),
+        ]);
+        $this->mockSourcesByName([
+            'src-magento'  => $this->magentoSourceName(),
+            'src-merchant' => 'Merchant Dashboard Source',
+        ]);
+
+        $this->expectPersistedTask('task-magento', IngestionTaskService::ORIGIN_MAGENTO);
+
+        $result = $this->service->getTaskId($this->mockIndexOptions());
+
+        $this->assertSame('task-magento', $result);
+    }
+
+    /**
+     * Regression for the bug: listTasks returns the merchant task first, but discovery must still
+     * latch onto the Magento-owned task. Selection is deterministic, independent of response order.
+     */
+    public function testDiscoveryPrefersMagentoTaskWhenListedSecond(): void
+    {
+        $this->setupMagentoDestinationWithTasks([
+            $this->discoveryTask('task-merchant', 'src-merchant'),
+            $this->discoveryTask('task-magento', 'src-magento'),
+        ]);
+        $this->mockSourcesByName([
+            'src-merchant' => 'Merchant Dashboard Source',
+            'src-magento'  => $this->magentoSourceName(),
+        ]);
+
+        $this->expectPersistedTask('task-magento', IngestionTaskService::ORIGIN_MAGENTO);
+
+        $result = $this->service->getTaskId($this->mockIndexOptions());
+
+        $this->assertSame('task-magento', $result);
+    }
+
+    public function testDiscoveryFallsBackToFirstTaskWhenNoMagentoSourceExists(): void
+    {
+        $this->setupMagentoDestinationWithTasks([
+            $this->discoveryTask('task-merchant-1', 'src-merchant-1'),
+            $this->discoveryTask('task-merchant-2', 'src-merchant-2'),
+        ]);
+        $this->mockSourcesByName([
+            'src-merchant-1' => 'Merchant Source One',
+            'src-merchant-2' => 'Merchant Source Two',
+        ]);
+
+        // Magento-named destination with only merchant-owned tasks: legitimate HYBRID, first task wins.
+        $this->expectPersistedTask('task-merchant-1', IngestionTaskService::ORIGIN_HYBRID);
+
+        $result = $this->service->getTaskId($this->mockIndexOptions());
+
+        $this->assertSame('task-merchant-1', $result);
+    }
+
+    public function testDiscoveryThrowsWhenMagentoCandidateIsDisabledEvenIfMerchantIsEnabled(): void
+    {
+        $this->setupMagentoDestinationWithTasks([
+            $this->discoveryTask('task-merchant', 'src-merchant', enabled: true),
+            $this->discoveryTask('task-magento', 'src-magento', enabled: false),
+        ]);
+        $this->mockSourcesByName([
+            'src-merchant' => 'Merchant Dashboard Source',
+            'src-magento'  => $this->magentoSourceName(),
+        ]);
+
+        // Admin disabled the canonical Magento task: do not silently substitute the merchant task.
+        $this->taskResource->expects($this->never())->method('save');
+        $this->ingestionClient->expects($this->never())->method('createSource');
+        $this->ingestionClient->expects($this->never())->method('createTask');
+
+        $this->expectException(TaskDisabledException::class);
+
+        $this->service->getTaskId($this->mockIndexOptions());
+    }
+
+    public function testDiscoveryPicksEnabledMagentoTaskWhenDisabledMerchantIsFirst(): void
+    {
+        $this->setupMagentoDestinationWithTasks([
+            $this->discoveryTask('task-merchant', 'src-merchant', enabled: false),
+            $this->discoveryTask('task-magento', 'src-magento', enabled: true),
+        ]);
+        $this->mockSourcesByName([
+            'src-merchant' => 'Merchant Dashboard Source',
+            'src-magento'  => $this->magentoSourceName(),
+        ]);
+
+        // A disabled merchant task ahead of the Magento task must not poison discovery.
+        $this->expectPersistedTask('task-magento', IngestionTaskService::ORIGIN_MAGENTO);
+
+        $result = $this->service->getTaskId($this->mockIndexOptions());
+
+        $this->assertSame('task-magento', $result);
+    }
+
+    public function testDiscoverySkipsTaskWhenGetSourceReturns404(): void
+    {
+        $this->setupMagentoDestinationWithTasks([
+            $this->discoveryTask('task-orphan', 'src-404'),
+            $this->discoveryTask('task-magento', 'src-magento'),
+        ]);
+        $this->ingestionClient->method('getSource')
+            ->willReturnCallback(function (string $id): array {
+                if ($id === 'src-404') {
+                    throw new NotFoundException('source not found');
+                }
+                return ['name' => $this->magentoSourceName()];
+            });
+
+        // A 404 on one candidate's source is treated as "not Magento"; discovery continues.
+        $this->expectPersistedTask('task-magento', IngestionTaskService::ORIGIN_MAGENTO);
+
+        $result = $this->service->getTaskId($this->mockIndexOptions());
+
+        $this->assertSame('task-magento', $result);
+    }
+
+    public function testDiscoveryDoesNotRefetchSourceWhenPersistingMagentoCandidate(): void
+    {
+        $this->setupMagentoDestinationWithTasks([
+            $this->discoveryTask('task-magento', 'src-magento'),
+        ]);
+
+        // Proves the pre-fetched source is threaded through to persistDiscoveredTask: exactly one GET.
+        $this->ingestionClient->expects($this->once())
+            ->method('getSource')
+            ->with('src-magento')
+            ->willReturn(['name' => $this->magentoSourceName()]);
+
+        $this->expectPersistedTask('task-magento', IngestionTaskService::ORIGIN_MAGENTO);
+
+        $result = $this->service->getTaskId($this->mockIndexOptions());
+
+        $this->assertSame('task-magento', $result);
+    }
+
+    public function testDiscoveryDeduplicatesGetSourceForSharedSourceId(): void
+    {
+        // Two merchant tasks share a sourceID ahead of the Magento task. The shared source must be
+        // fetched once (cache hit on the repeat), not once per task.
+        $this->setupMagentoDestinationWithTasks([
+            $this->discoveryTask('task-merchant-a', 'src-shared'),
+            $this->discoveryTask('task-merchant-b', 'src-shared'),
+            $this->discoveryTask('task-magento', 'src-magento'),
+        ]);
+
+        $calls = [];
+        $this->ingestionClient->method('getSource')
+            ->willReturnCallback(function (string $id) use (&$calls): array {
+                $calls[$id] = ($calls[$id] ?? 0) + 1;
+                return ['name' => $id === 'src-magento' ? $this->magentoSourceName() : 'Merchant Shared Source'];
+            });
+
+        $this->expectPersistedTask('task-magento', IngestionTaskService::ORIGIN_MAGENTO);
+
+        $result = $this->service->getTaskId($this->mockIndexOptions());
+
+        $this->assertSame('task-magento', $result);
+        $this->assertSame(1, $calls['src-shared'], 'shared sourceID should be fetched once');
+        $this->assertSame(1, $calls['src-magento'], 'magento sourceID should be fetched once');
+    }
+
     public function testGetTaskIdCreatesFullPipelineWhenNoExistingTaskFound(): void
     {
         $this->setupEmptyCollection();
@@ -971,6 +1139,65 @@ class IngestionTaskServiceTest extends TestCase
             ))
             ->willReturnSelf();
         return $this->taskModel;
+    }
+
+    /**
+     * Wire up a single Magento-named destination on page 1 whose listTasks returns $tasks, with
+     * getDestination resolving to the Magento destination name. Used by the multi-task discovery tests.
+     *
+     * @param array<int, array<string, mixed>> $tasks
+     */
+    private function setupMagentoDestinationWithTasks(array $tasks): void
+    {
+        $this->setupEmptyCollection();
+
+        $this->ingestionClient->method('listDestinations')
+            ->willReturn($this->mockDestinationListResponse(
+                [self::DESTINATION_ID => self::INDEX_NAME],
+                nbPages: 1,
+                destinationName: $this->magentoDestinationName()
+            ));
+        $this->ingestionClient->method('listTasks')
+            ->willReturn(['tasks' => $tasks]);
+        $this->ingestionClient->method('getDestination')
+            ->willReturn([
+                'name' => $this->magentoDestinationName(),
+                'authenticationID' => self::AUTHENTICATION_ID,
+            ]);
+    }
+
+    /** @return array<string, mixed> */
+    private function discoveryTask(string $taskId, string $sourceId, bool $enabled = true): array
+    {
+        return [
+            'taskID' => $taskId,
+            'sourceID' => $sourceId,
+            'destinationID' => self::DESTINATION_ID,
+            'enabled' => $enabled,
+        ];
+    }
+
+    /**
+     * Mock getSource to resolve each sourceID to a source with the given name.
+     *
+     * @param array<string, string> $sourceIdToName
+     */
+    private function mockSourcesByName(array $sourceIdToName): void
+    {
+        $this->ingestionClient->method('getSource')
+            ->willReturnCallback(fn(string $id): array => ['name' => $sourceIdToName[$id] ?? 'Unknown Source']);
+    }
+
+    private function expectPersistedTask(string $expectedTaskId, int $expectedOrigin): void
+    {
+        $this->taskModel = $this->createMock(IngestionTask::class);
+        $this->taskModel->expects($this->once())
+            ->method('setData')
+            ->with($this->callback(fn(array $data): bool =>
+                ($data['task_id'] ?? null) === $expectedTaskId
+                && ($data['origin'] ?? null) === $expectedOrigin
+            ))
+            ->willReturnSelf();
     }
 
     private function mockTaskListResponseWithTask(string $taskId): array
