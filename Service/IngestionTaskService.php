@@ -248,7 +248,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
                     // merchant-created task alongside ours), prefer the one whose source is
                     // also Magento-owned so discovery latches onto the canonical task
                     // deterministically, regardless of listTasks ordering.
-                    $magento = $this->findMagentoPreferredTask($client, $tasks, $storeId, $entityType);
+                    $magento = $this->findMagentoPreferredTask($tasks, $storeId, $entityType);
                     if ($magento !== null) {
                         [$task, $source] = $magento;
                         if ($this->isTaskUsable($storeId, $task)) {
@@ -290,7 +290,6 @@ class IngestionTaskService implements IngestionTaskServiceInterface
      * @throws AlgoliaException
      */
     protected function findMagentoPreferredTask(
-        IngestionClient $client,
         array $tasks,
         int $storeId,
         ?string $entityType
@@ -305,7 +304,7 @@ class IngestionTaskService implements IngestionTaskServiceInterface
 
             if (!array_key_exists($sourceId, $sourceCache)) {
                 try {
-                    $sourceCache[$sourceId] = $client->getSource($sourceId);
+                    $sourceCache[$sourceId] = $this->clientProvider->getClient($storeId)->getSource($sourceId);
                 } catch (NotFoundException) {
                     $sourceCache[$sourceId] = null;
                 }
