@@ -7,7 +7,7 @@ This enables support for **pre-indexing JavaScript transformations**, low latenc
 
 ## Requirements
 
-- PHP 8.2+
+- PHP 8.3+
 - Magento 2.4+
 - `algolia/algoliasearch-magento-2` ^3.19.0
 
