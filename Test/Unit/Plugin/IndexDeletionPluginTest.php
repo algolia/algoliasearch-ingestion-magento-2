@@ -20,7 +20,7 @@ class IndexDeletionPluginTest extends TestCase
         $this->plugin = new IndexDeletionPlugin($this->taskService);
     }
 
-    public function testAfterDeleteIndexCallsInvalidateWithIndexOptions(): void
+    public function testAfterDeleteIndexCallsInvalidateByIndexWithIndexOptions(): void
     {
         /** @var IndexOptionsInterface&MockObject $indexOptions */
         $indexOptions = $this->createMock(IndexOptionsInterface::class);
@@ -28,7 +28,7 @@ class IndexDeletionPluginTest extends TestCase
         $connector = $this->createMock(AlgoliaConnector::class);
 
         $this->taskService->expects($this->once())
-            ->method('invalidate')
+            ->method('invalidateByIndex')
             ->with($this->identicalTo($indexOptions));
 
         $this->plugin->afterDeleteIndex($connector, null, $indexOptions);

@@ -76,6 +76,7 @@
         <arguments>
             <argument name="storeManager" xsi:type="object">Magento\Store\Model\StoreManagerInterface\Proxy</argument>
             <argument name="taskService" xsi:type="object">Algolia\Ingestion\Api\IngestionTaskServiceInterface\Proxy</argument>
+            <argument name="cleanupService" xsi:type="object">Algolia\Ingestion\Service\IngestionCleanupService\Proxy</argument>
             <argument name="storeNameFetcher" xsi:type="object">Algolia\AlgoliaSearch\Service\StoreNameFetcher\Proxy</argument>
         </arguments>
     </type>
