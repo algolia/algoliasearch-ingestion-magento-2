@@ -4,7 +4,7 @@ namespace Algolia\Ingestion\Test\Unit\Console\Command\Ingestion;
 
 use Algolia\AlgoliaSearch\Api\Data\IndexOptionsInterface;
 use Algolia\AlgoliaSearch\Helper\Entity\CategoryHelper;
-use Algolia\AlgoliaSearch\Service\IndexOptionsBuilder;
+use Algolia\AlgoliaSearch\Service\Index\IndexOptionsBuilder;
 use Algolia\Ingestion\Api\IngestionTaskServiceInterface;
 use Algolia\Ingestion\Console\Command\Ingestion\IngestionInitCommand;
 use Magento\Framework\Console\Cli;
