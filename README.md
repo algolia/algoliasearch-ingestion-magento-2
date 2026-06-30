@@ -20,16 +20,18 @@ If anything goes wrong and **Fallback to direct indexing** is enabled, the strat
 
 ### The Task Pipeline
 
-The Ingestion API models indexing as a pipeline of four resources:
+The Ingestion API models indexing as a pipeline of resources. Following the data as it flows from Magento to a searchable index:
 
 ```
-Source  ──►  Task  ──►  Destination  (with an attached Authentication)
-(push)                  (search index)
+Source  ──►  Task  ──►  Transformation  ──►  Destination
+(push)                  (optional)           (search index)
+                                             + Authentication
 ```
 
 - **Source** - a `push` source that receives records from Magento.
+- **Task** - binds a source to a destination and is the resource Magento actually pushes to.
+- **Transformation** - optional JavaScript that reshapes records before they land in the index. A transformation is attached to the **destination**, so the same one can be reused across multiple destinations. It can be defined when creating a push connector in the Algolia dashboard, or managed independently afterwards.
 - **Destination** - the target Algolia search index, paired with an **Authentication** holding the credentials.
-- **Task** - binds a source to a destination and is the resource Magento actually pushes to. Transformations are attached here, in the dashboard.
 
 This module never pushes raw records to an index. It resolves a **Task ID** for the (store, index) pair and calls `pushTask()` (or `push()` with a production reference for temporary reindex flows). Resolution is handled by [`IngestionTaskService`](Service/IngestionTaskService.php), which:
 
