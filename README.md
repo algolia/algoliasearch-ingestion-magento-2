@@ -54,6 +54,25 @@ Because a pipeline can be created by this module, created by a merchant in the d
 
 Provenance is derived by comparing the discovered destination and source names against the format the extension itself would produce. It is surfaced in the `status` command and gates the safety logic of `reset --api-cleanup`: the cleanup only deletes resources it can prove Magento owns, and demotes anything shared with an out-of-scope task to "preserve".
 
+### Disabling a task in the dashboard
+
+A task can be disabled from the Algolia dashboard (`enabled: false`). The integration treats this as a **deliberate, valid state**, not as a missing or broken pipeline, and the behaviour is pinned by unit tests so it does not drift.
+
+The key distinction is against a `404`. A `404` means the task no longer exists, so the stale local reference is discarded and the pipeline is rediscovered or recreated. A *disabled* task still exists and is still valid for when the admin re-enables it, so the local cache reference is **never deleted or replaced**. Instead, a `TaskDisabledException` is raised and a warning is logged telling the admin to re-enable the task in the dashboard.
+
+Because `TaskDisabledException` is a plain `\RuntimeException` (not a `NotFoundException`), it bypasses the `404` retry path and lands directly in the strategy's error handler, which routes purely on the **Fallback to direct indexing** setting:
+
+| Fallback setting | Behaviour when the task is disabled |
+|---|---|
+| **Enabled** (default) | Falls back to a direct `batch()` write, so indexing continues uninterrupted. |
+| **Disabled** | The exception is re-thrown and the operation fails loudly. |
+
+This is intentional: a disabled task does not silently halt indexing unless the admin has explicitly opted out of the fallback.
+
+The contract is asymmetric with discovery on purpose. If the Magento-owned candidate task is disabled, discovery does **not** silently substitute a different merchant-owned task that happens to be enabled. It surfaces the disabled state rather than quietly routing through a pipeline the merchant did not intend Magento to use.
+
+> **Tests:** `IngestionSendStrategyTest::testSendFallsBackToBatchWhenTaskDisabledAndFallbackEnabled` and `testSendThrowsWhenTaskDisabledAndFallbackDisabled` pin the send-time routing; `IngestionTaskServiceTest::testDiscoveryThrowsWhenMagentoCandidateIsDisabledEvenIfMerchantIsEnabled` pins the discovery contract.
+
 ## Requirements
 
 - PHP 8.3+ (8.3, 8.4, and 8.5 are supported)
