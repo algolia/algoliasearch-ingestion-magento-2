@@ -8,10 +8,11 @@ use Algolia\AlgoliaSearch\Api\LoggerInterface;
 use Algolia\AlgoliaSearch\Exceptions\BadRequestException;
 use Algolia\AlgoliaSearch\Exceptions\NotFoundException;
 use Algolia\AlgoliaSearch\Service\DirectSendStrategy;
-use Algolia\AlgoliaSearch\Service\IndexNameFetcher;
+use Algolia\AlgoliaSearch\Service\Index\IndexNameFetcher;
 use Algolia\AlgoliaSearch\Test\TestCase;
 use Algolia\Ingestion\Api\IngestionClientProviderInterface;
 use Algolia\Ingestion\Api\IngestionTaskServiceInterface;
+use Algolia\Ingestion\Exception\TaskDisabledException;
 use Algolia\Ingestion\Helper\IngestionConfigHelper;
 use Algolia\Ingestion\Service\IngestionSendStrategy;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -417,6 +418,55 @@ class IngestionSendStrategyTest extends TestCase
 
         $result = $this->strategy->send($indexOptions, $requests);
         $this->assertSame(['taskID' => 'fallback'], $result);
+    }
+
+    // --- Disabled task (admin paused ingestion for this pipeline) ---
+    //
+    // A disabled task surfaces as TaskDisabledException out of getTaskId(). It is a plain
+    // RuntimeException (not a NotFoundException), so it bypasses the 404 retry path and lands
+    // in handleError(), where routing is governed solely by fallback_to_batch. These two tests
+    // pin that contract with the concrete exception type so a future change to the exception
+    // hierarchy (or a special-case catch) fails loudly.
+
+    public function testSendFallsBackToBatchWhenTaskDisabledAndFallbackEnabled(): void
+    {
+        $indexOptions = $this->mockIndexOptions(self::INDEX_NAME, false);
+
+        $this->taskService->method('getTaskId')
+            ->willThrowException(new TaskDisabledException(self::TASK_ID));
+
+        // A disabled task must never trigger a push or a stale-task invalidation/retry.
+        $this->ingestionClient->expects($this->never())->method('pushTask');
+        $this->ingestionClient->expects($this->never())->method('push');
+        $this->taskService->expects($this->never())->method('invalidateByIndex');
+
+        $this->configHelper->method('isFallbackEnabled')->willReturn(true);
+
+        $requests = [['action' => 'addObject', 'body' => ['objectID' => '1']]];
+        $this->directSendStrategy->expects($this->once())
+            ->method('send')
+            ->with($indexOptions, $requests)
+            ->willReturn(['taskID' => 'batch-disabled']);
+
+        $result = $this->strategy->send($indexOptions, $requests);
+        $this->assertSame(['taskID' => 'batch-disabled'], $result);
+    }
+
+    public function testSendThrowsWhenTaskDisabledAndFallbackDisabled(): void
+    {
+        $indexOptions = $this->mockIndexOptions(self::INDEX_NAME, false);
+
+        $this->taskService->method('getTaskId')
+            ->willThrowException(new TaskDisabledException(self::TASK_ID));
+
+        $this->configHelper->method('isFallbackEnabled')->willReturn(false);
+        $this->directSendStrategy->expects($this->never())->method('send');
+
+        $this->expectException(TaskDisabledException::class);
+
+        $this->strategy->send($indexOptions, [
+            ['action' => 'addObject', 'body' => ['objectID' => '1']],
+        ]);
     }
 
     public function testTempIndex404RetrySucceeds(): void

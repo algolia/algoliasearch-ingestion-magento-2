@@ -7,7 +7,7 @@ use Algolia\AlgoliaSearch\Api\IngestionClient;
 use Algolia\AlgoliaSearch\Api\LoggerInterface;
 use Algolia\AlgoliaSearch\Exceptions\NotFoundException;
 use Algolia\AlgoliaSearch\Helper\ConfigHelper;
-use Algolia\AlgoliaSearch\Service\IndexNameFetcher;
+use Algolia\AlgoliaSearch\Service\Index\IndexNameFetcher;
 use Algolia\AlgoliaSearch\Test\TestCase;
 use Algolia\Ingestion\Api\IngestionClientProviderInterface;
 use Algolia\Ingestion\Exception\TaskDisabledException;
