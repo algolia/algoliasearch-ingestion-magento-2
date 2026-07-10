@@ -17,10 +17,12 @@ class IngestionClientProvider extends AbstractClientProvider implements Ingestio
     protected array $clients = [];
 
     public function __construct(
-        protected ConfigHelper $config,
-        protected IngestionConfigHelper $ingestionConfigHelper,
-        protected AlgoliaCredentialsManager $algoliaCredentialsManager
-    ) {}
+        ConfigHelper $config,
+        AlgoliaCredentialsManager $algoliaCredentialsManager,
+        protected IngestionConfigHelper $ingestionConfigHelper
+    ) {
+        parent::__construct($config, $algoliaCredentialsManager);
+    }
 
     /**
      * @throws AlgoliaException
