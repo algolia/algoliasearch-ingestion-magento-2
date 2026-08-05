@@ -53,16 +53,17 @@ class IngestionIndexingTestCase extends IndexingTestCase
         }
     }
 
-    protected function processTest(
-        BatchQueueProcessorInterface $batchQueueProcessor,
-                                     $indexSuffix,
-                                     $expectedNbHits
-    ) {
-        $indexOptions = $this->getIndexOptions($indexSuffix);
-
-        $this->algoliaConnector->clearIndex($indexOptions);
-        $batchQueueProcessor->processBatch(1);
-
-        $this->assertNumberofHits($indexSuffix, $expectedNbHits);
-    }
+//    protected function processTest(
+//        BatchQueueProcessorInterface $batchQueueProcessor,
+//                                     $indexSuffix,
+//                                     $expectedNbHits
+//    ) {
+//        $indexOptions = $this->getIndexOptions($indexSuffix);
+//
+//        $this->algoliaConnector->clearIndex($indexOptions);
+//        $batchQueueProcessor->processBatch(1);
+//        $this->algoliaConnector->waitLastTask();
+//
+//        $this->assertNumberofHits($indexSuffix, $expectedNbHits);
+//    }
 }
