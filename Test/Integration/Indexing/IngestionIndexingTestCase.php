@@ -45,6 +45,8 @@ class IngestionIndexingTestCase extends IndexingTestCase
             $this->clientProvider->getClient(1)->deleteTransformation($transformation);
         }
 
+        IngestionSendStrategy::setSynchronousMode(null);
+
         parent::tearDown();
     }
 
@@ -92,6 +94,7 @@ class IngestionIndexingTestCase extends IndexingTestCase
         $indexOptions = $this->getIndexOptions($indexSuffix);
 
         $this->algoliaConnector->clearIndex($indexOptions);
+        $this->algoliaConnector->waitLastTask(1);
 
         $batchQueueProcessor->processBatch(1);
         $this->algoliaConnector->waitLastTask(1);

@@ -31,7 +31,7 @@ class IngestionSendStrategy implements SendStrategyInterface
         return $this->configHelper->isEnabled($storeId);
     }
 
-    static public function setSynchronousMode(bool $synchronous): void
+    public static  function setSynchronousMode(?bool $synchronous): void
     {
         self::$synchronous = $synchronous;
     }
