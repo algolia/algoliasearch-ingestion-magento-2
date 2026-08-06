@@ -15,6 +15,8 @@ use Algolia\Ingestion\Helper\IngestionConfigHelper;
 
 class IngestionSendStrategy implements SendStrategyInterface
 {
+    protected static ?bool $synchronous = null;
+
     public function __construct(
         protected IngestionConfigHelper            $configHelper,
         protected IngestionClientProviderInterface $clientProvider,
@@ -27,6 +29,14 @@ class IngestionSendStrategy implements SendStrategyInterface
     public function isApplicable(int $storeId): bool
     {
         return $this->configHelper->isEnabled($storeId);
+    }
+
+    /**
+     * @internal Test-only hook. Not part of the public API; do not call from application code.
+     */
+    public static  function setSynchronousMode(?bool $synchronous): void
+    {
+        self::$synchronous = $synchronous;
     }
 
     public function send(IndexOptionsInterface $indexOptions, array $requests): array
@@ -137,7 +147,7 @@ class IngestionSendStrategy implements SendStrategyInterface
     ): array {
         $client = $this->clientProvider->getClient($indexOptions->getStoreId());
         $taskId = $this->taskService->getTaskId($indexOptions);
-        $response = $client->pushTask($taskId, $payload);
+        $response = $client->pushTask($taskId, $payload, self::$synchronous);
         $this->logPushResponse('Ingestion pushTask response', $indexOptions, $payload, $response, $taskId);
         return $response;
     }

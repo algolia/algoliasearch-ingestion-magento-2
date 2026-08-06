@@ -36,8 +36,8 @@ class IngestionClientProviderTest extends TestCase
 
         $this->provider = new IngestionClientProvider(
             $this->config,
-            $this->ingestionConfigHelper,
-            $this->credentialsManager
+            $this->credentialsManager,
+            $this->ingestionConfigHelper
         );
     }
 
@@ -105,8 +105,8 @@ class IngestionClientProviderTest extends TestCase
 
         $provider = new IngestionClientProvider(
             $this->config,
-            $ingestionConfigHelper,
-            $this->credentialsManager
+            $this->credentialsManager,
+            $ingestionConfigHelper
         );
 
         $this->expectException(AlgoliaException::class);
@@ -127,8 +127,8 @@ class IngestionClientProviderTest extends TestCase
 
         $provider = new IngestionClientProvider(
             $this->config,
-            $ingestionConfigHelper,
-            $this->credentialsManager
+            $this->credentialsManager,
+            $ingestionConfigHelper
         );
 
         $this->expectException(AlgoliaException::class);
