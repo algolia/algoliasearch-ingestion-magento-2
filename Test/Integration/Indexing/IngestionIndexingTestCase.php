@@ -23,7 +23,7 @@ class IngestionIndexingTestCase extends IndexingTestCase
         parent::setUp();
 
         $this->setConfig('algoliasearch_indexing_manager/ingestion/enable', 1);
-        $env = getenv('ALGOLIA_REGION') !== null && in_array(getenv('ALGOLIA_REGION'), ['en', 'us']) ?
+        $env = getenv('ALGOLIA_REGION') !== false && in_array(getenv('ALGOLIA_REGION'), ['en', 'us']) ?
             getenv('ALGOLIA_REGION') :
             'us';
 

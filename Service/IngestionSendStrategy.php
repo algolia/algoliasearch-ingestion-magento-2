@@ -31,6 +31,9 @@ class IngestionSendStrategy implements SendStrategyInterface
         return $this->configHelper->isEnabled($storeId);
     }
 
+    /**
+     * @internal Test-only hook. Not part of the public API; do not call from application code.
+     */
     public static  function setSynchronousMode(?bool $synchronous): void
     {
         self::$synchronous = $synchronous;
