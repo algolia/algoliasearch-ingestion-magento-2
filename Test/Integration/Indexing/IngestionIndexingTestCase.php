@@ -103,6 +103,8 @@ class IngestionIndexingTestCase extends IndexingTestCase
 
         $batchQueueProcessor->processBatch(1);
         $this->algoliaConnector->waitLastTask(1);
+
+        $this->assertNumberofHits($indexSuffix, $expectedNbHits);
     }
 
     protected function assertNumberofHits($indexSuffix, $expectedNbHits)
