@@ -23,11 +23,10 @@ use Algolia\Ingestion\Model\Cleanup\Result\RowResult;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 
-// CHARACTERIZATION: Collaborators here are shared across many tests and used interchangeably as
-// canned-response feeders (bare ->method(), no ->expects()) or asserted interactions, via the
-// same setUp() properties. Auditing every call site to split stub-vs-mock usage would be large
-// mechanical churn with no behavioral benefit (see CHANGELOG-claude.md, "Option B"), so this class
-// opts out of the PHPUnit 12 "mock created without expectations" notice at the class level.
+// TODO: Opts out of the PHPUnit 12 "mock created without expectations" notice. Collaborators are
+// created once in setUp() and used as canned-response feeders in some tests (bare ->method(), no
+// ->expects()) and as asserted interactions in others, so they cannot be split into stubs and mocks
+// without moving creation into each test via createObjectToTest().
 #[AllowMockObjectsWithoutExpectations]
 class IngestionCleanupServiceTest extends TestCase
 {

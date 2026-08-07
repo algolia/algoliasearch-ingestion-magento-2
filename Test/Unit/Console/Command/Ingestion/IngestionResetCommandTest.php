@@ -25,11 +25,10 @@ use PHPUnit\Framework\MockObject\MockObject;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
 
-// CHARACTERIZATION: Collaborators are shared across many tests and used interchangeably as
-// canned-response feeders (bare ->method(), no ->expects()) or asserted interactions. Auditing
-// every call site to split stub-vs-mock usage would be large mechanical churn with no behavioral
-// benefit (see CHANGELOG-claude.md, "Option B"), so this class opts out of the PHPUnit 12
-// "mock created without expectations" notice at the class level.
+// TODO: Opts out of the PHPUnit 12 "mock created without expectations" notice. The command under
+// test is built as a partial mock (see makePartial()) so the notice cannot be resolved by splitting
+// stub-vs-mock usage. The shared setUp() collaborators are a separate cleanup: move creation into
+// each test so a test that only feeds canned input can use createStub().
 #[AllowMockObjectsWithoutExpectations]
 class IngestionResetCommandTest extends AbstractIngestionCommandTestCase
 {
