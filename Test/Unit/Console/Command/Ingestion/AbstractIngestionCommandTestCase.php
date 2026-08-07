@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Algolia\Ingestion\Test\Unit\Console\Command\Ingestion;
 
 use Algolia\AlgoliaSearch\Service\StoreNameFetcher;

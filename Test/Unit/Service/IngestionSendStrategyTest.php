@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Algolia\Ingestion\Test\Unit\Service;
 
 use Algolia\AlgoliaSearch\Api\Data\IndexOptionsInterface;
@@ -15,8 +17,15 @@ use Algolia\Ingestion\Api\IngestionTaskServiceInterface;
 use Algolia\Ingestion\Exception\TaskDisabledException;
 use Algolia\Ingestion\Helper\IngestionConfigHelper;
 use Algolia\Ingestion\Service\IngestionSendStrategy;
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 
+// CHARACTERIZATION: Nearly every collaborator here is used as a pure canned-response feeder in
+// some tests (bare ->method(), no ->expects()) and as an asserted interaction in others, all via
+// the same shared setUp() property. Auditing each call site to split stub-vs-mock usage would be
+// large mechanical churn with no behavioral benefit (see CHANGELOG-claude.md, "Option B"), so this
+// class opts out of the PHPUnit 12 "mock created without expectations" notice at the class level.
+#[AllowMockObjectsWithoutExpectations]
 class IngestionSendStrategyTest extends TestCase
 {
     private const STORE_ID = 1;
@@ -46,13 +55,24 @@ class IngestionSendStrategyTest extends TestCase
         $this->directSendStrategy = $this->createMock(DirectSendStrategy::class);
         $this->logger = $this->createMock(LoggerInterface::class);
 
-        $this->strategy = new IngestionSendStrategy(
-            $this->configHelper,
-            $this->clientProvider,
-            $this->taskService,
-            $this->indexNameFetcher,
-            $this->directSendStrategy,
-            $this->logger
+        $this->strategy = $this->createObjectToTest();
+    }
+
+    protected function createObjectToTest(
+        ?IngestionConfigHelper $configHelper = null,
+        ?IngestionClientProviderInterface $clientProvider = null,
+        ?IngestionTaskServiceInterface $taskService = null,
+        ?IndexNameFetcher $indexNameFetcher = null,
+        ?DirectSendStrategy $directSendStrategy = null,
+        ?LoggerInterface $logger = null,
+    ): IngestionSendStrategy {
+        return new IngestionSendStrategy(
+            $configHelper ?? $this->configHelper,
+            $clientProvider ?? $this->clientProvider,
+            $taskService ?? $this->taskService,
+            $indexNameFetcher ?? $this->indexNameFetcher,
+            $directSendStrategy ?? $this->directSendStrategy,
+            $logger ?? $this->logger,
         );
     }
 

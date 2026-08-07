@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Algolia\Ingestion\Test\Unit\Console\Command\Ingestion;
 
 use Algolia\Ingestion\Api\IngestionTaskServiceInterface;
@@ -18,10 +20,17 @@ use Algolia\Ingestion\Service\IngestionCleanupService;
 use Magento\Framework\Console\Cli;
 use Magento\Framework\DB\Adapter\AdapterInterface;
 use Magento\Framework\Exception\NoSuchEntityException;
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
 
+// CHARACTERIZATION: Collaborators are shared across many tests and used interchangeably as
+// canned-response feeders (bare ->method(), no ->expects()) or asserted interactions. Auditing
+// every call site to split stub-vs-mock usage would be large mechanical churn with no behavioral
+// benefit (see CHANGELOG-claude.md, "Option B"), so this class opts out of the PHPUnit 12
+// "mock created without expectations" notice at the class level.
+#[AllowMockObjectsWithoutExpectations]
 class IngestionResetCommandTest extends AbstractIngestionCommandTestCase
 {
     private null|(IngestionTaskServiceInterface&MockObject) $taskService = null;

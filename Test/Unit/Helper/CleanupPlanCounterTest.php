@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Algolia\Ingestion\Test\Unit\Helper;
 
 use Algolia\AlgoliaSearch\Test\TestCase;
@@ -114,7 +116,7 @@ class CleanupPlanCounterTest extends TestCase
     private function buildRow(array $objects, array $preservedTransformationIds = []): RowPlan
     {
         return new RowPlan(
-            $this->createMock(IngestionTask::class),
+            $this->createStub(IngestionTask::class),
             1,
             'idx',
             1,

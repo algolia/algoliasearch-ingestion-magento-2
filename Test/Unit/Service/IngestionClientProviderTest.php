@@ -1,76 +1,65 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Algolia\Ingestion\Test\Unit\Service;
 
 use Algolia\AlgoliaSearch\Exceptions\AlgoliaException;
 use Algolia\AlgoliaSearch\Helper\ConfigHelper;
 use Algolia\AlgoliaSearch\Service\AlgoliaCredentialsManager;
+use Algolia\AlgoliaSearch\Test\TestCase;
 use Algolia\Ingestion\Helper\IngestionConfigHelper;
 use Algolia\Ingestion\Service\IngestionClientProvider;
-use Algolia\AlgoliaSearch\Test\TestCase;
-use PHPUnit\Framework\MockObject\MockObject;
+use PHPUnit\Framework\MockObject\Stub;
 
 class IngestionClientProviderTest extends TestCase
 {
-    private null|(ConfigHelper&MockObject) $config = null;
-    private null|(IngestionConfigHelper&MockObject) $ingestionConfigHelper = null;
-    private null|(AlgoliaCredentialsManager&MockObject) $credentialsManager = null;
-    private ?IngestionClientProvider $provider = null;
-
-    protected function setUp(): void
-    {
-        $this->config = $this->createMock(ConfigHelper::class);
-        $this->ingestionConfigHelper = $this->createMock(IngestionConfigHelper::class);
-        $this->config->method('getExtensionVersion')->willReturn('3.19.0');
-        $this->config->method('getMagentoVersion')->willReturn('2.4.8');
-        $this->config->method('getMagentoEdition')->willReturn('Community');
-        $this->config->method('getApplicationID')->willReturn('test-app-id');
-        $this->config->method('getAPIKey')->willReturn('test-api-key');
-        $this->config->method('getConnectionTimeout')->willReturn(5);
-        $this->config->method('getReadTimeout')->willReturn(10);
-        $this->config->method('getWriteTimeout')->willReturn(30);
-
-        $this->ingestionConfigHelper->method('getRegion')->willReturn('us');
-
-        $this->credentialsManager = $this->createMock(AlgoliaCredentialsManager::class);
-
-        $this->provider = new IngestionClientProvider(
-            $this->config,
-            $this->credentialsManager,
-            $this->ingestionConfigHelper
+    protected function createObjectToTest(
+        ?ConfigHelper $config = null,
+        ?AlgoliaCredentialsManager $credentialsManager = null,
+        ?IngestionConfigHelper $ingestionConfigHelper = null,
+    ): IngestionClientProvider {
+        return new IngestionClientProvider(
+            $config ?? $this->defaultConfig(),
+            $credentialsManager ?? $this->createStub(AlgoliaCredentialsManager::class),
+            $ingestionConfigHelper ?? $this->defaultIngestionConfigHelper(),
         );
     }
 
     public function testGetClientThrowsWhenCredentialsInvalid(): void
     {
-        $this->credentialsManager->method('checkCredentials')->willReturn(false);
+        $credentialsManager = $this->createStub(AlgoliaCredentialsManager::class);
+        $credentialsManager->method('checkCredentials')->willReturn(false);
 
         $this->expectException(AlgoliaException::class);
         $this->expectExceptionMessage('Algolia credentials were not provided');
 
-        $this->provider->getClient(1);
+        $this->createObjectToTest(credentialsManager: $credentialsManager)->getClient(1);
     }
 
     public function testGetClientWithNullStoreIdDefaultsToZero(): void
     {
-        $this->credentialsManager->method('checkCredentials')
-            ->with(0)
+        $credentialsManager = $this->createStub(AlgoliaCredentialsManager::class);
+        $credentialsManager->method('checkCredentials')
             ->willReturn(false);
 
         $this->expectException(AlgoliaException::class);
 
-        $this->provider->getClient(null);
+        $this->createObjectToTest(credentialsManager: $credentialsManager)->getClient(null);
     }
 
     public function testGetClientCachesPerStore(): void
     {
-        $this->credentialsManager->expects($this->once())
+        $credentialsManager = $this->createMock(AlgoliaCredentialsManager::class);
+        $credentialsManager->expects($this->once())
             ->method('checkCredentials')
             ->with(1)
             ->willReturn(true);
 
-        $client1 = $this->provider->getClient(1);
-        $client1Again = $this->provider->getClient(1);
+        $provider = $this->createObjectToTest(credentialsManager: $credentialsManager);
+
+        $client1 = $provider->getClient(1);
+        $client1Again = $provider->getClient(1);
 
         $this->assertSame($client1, $client1Again);
     }
@@ -78,7 +67,8 @@ class IngestionClientProviderTest extends TestCase
     public function testGetClientReturnsDifferentClientsPerStore(): void
     {
         $storeIds = [];
-        $this->credentialsManager->expects($this->exactly(2))
+        $credentialsManager = $this->createMock(AlgoliaCredentialsManager::class);
+        $credentialsManager->expects($this->exactly(2))
             ->method('checkCredentials')
             ->with($this->callback(function (int $storeId) use (&$storeIds) {
                 $storeIds[] = $storeId;
@@ -86,8 +76,10 @@ class IngestionClientProviderTest extends TestCase
             }))
             ->willReturn(true);
 
-        $client1 = $this->provider->getClient(1);
-        $client2 = $this->provider->getClient(2);
+        $provider = $this->createObjectToTest(credentialsManager: $credentialsManager);
+
+        $client1 = $provider->getClient(1);
+        $client2 = $provider->getClient(2);
 
         $this->assertNotSame($client1, $client2);
         $this->assertEquals([1, 2], $storeIds);
@@ -95,18 +87,18 @@ class IngestionClientProviderTest extends TestCase
 
     public function testGetClientWithWrongRegion(): void
     {
-        $ingestionConfigHelper = $this->createMock(IngestionConfigHelper::class);
+        $ingestionConfigHelper = $this->createStub(IngestionConfigHelper::class);
         $ingestionConfigHelper->method('getRegion')->willReturn('jp');
 
-        $this->credentialsManager->expects($this->once())
+        $credentialsManager = $this->createMock(AlgoliaCredentialsManager::class);
+        $credentialsManager->expects($this->once())
             ->method('checkCredentials')
             ->with(1)
             ->willReturn(true);
 
-        $provider = new IngestionClientProvider(
-            $this->config,
-            $this->credentialsManager,
-            $ingestionConfigHelper
+        $provider = $this->createObjectToTest(
+            credentialsManager: $credentialsManager,
+            ingestionConfigHelper: $ingestionConfigHelper,
         );
 
         $this->expectException(AlgoliaException::class);
@@ -117,23 +109,44 @@ class IngestionClientProviderTest extends TestCase
 
     public function testGetClientWithEmptyRegion(): void
     {
-        $ingestionConfigHelper = $this->createMock(IngestionConfigHelper::class);
+        $ingestionConfigHelper = $this->createStub(IngestionConfigHelper::class);
         $ingestionConfigHelper->method('getRegion')->willReturn('');
 
-        $this->credentialsManager->expects($this->once())
+        $credentialsManager = $this->createMock(AlgoliaCredentialsManager::class);
+        $credentialsManager->expects($this->once())
             ->method('checkCredentials')
             ->with(1)
             ->willReturn(true);
 
-        $provider = new IngestionClientProvider(
-            $this->config,
-            $this->credentialsManager,
-            $ingestionConfigHelper
+        $provider = $this->createObjectToTest(
+            credentialsManager: $credentialsManager,
+            ingestionConfigHelper: $ingestionConfigHelper,
         );
 
         $this->expectException(AlgoliaException::class);
         $this->expectExceptionMessage('region` is required and must be one of the following: eu, us');
 
         $provider->getClient(1);
+    }
+
+    private function defaultConfig(): ConfigHelper&Stub
+    {
+        $config = $this->createStub(ConfigHelper::class);
+        $config->method('getExtensionVersion')->willReturn('3.19.0');
+        $config->method('getMagentoVersion')->willReturn('2.4.8');
+        $config->method('getMagentoEdition')->willReturn('Community');
+        $config->method('getApplicationID')->willReturn('test-app-id');
+        $config->method('getAPIKey')->willReturn('test-api-key');
+        $config->method('getConnectionTimeout')->willReturn(5);
+        $config->method('getReadTimeout')->willReturn(10);
+        $config->method('getWriteTimeout')->willReturn(30);
+        return $config;
+    }
+
+    private function defaultIngestionConfigHelper(): IngestionConfigHelper&Stub
+    {
+        $ingestionConfigHelper = $this->createStub(IngestionConfigHelper::class);
+        $ingestionConfigHelper->method('getRegion')->willReturn('us');
+        return $ingestionConfigHelper;
     }
 }
