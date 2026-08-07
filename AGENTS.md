@@ -49,6 +49,10 @@ When changing any of these areas, update the corresponding test in the same chan
 
 See the **How It Works** section of [README.md](README.md#how-it-works) for the send strategy, the Source → Task → Transformation → Destination pipeline, task resolution/caching, provenance, and disabled-task behaviour. There is no separate `doc/ARCHITECTURE.md` in this module; the README is the canonical overview.
 
+**Read the ADRs in [doc/adr/](doc/adr/) before proposing changes to the areas they cover.** They record decisions whose rationale is not recoverable from the source alone, along with the alternatives already rejected:
+
+- [ADR 0001: Ingestion pushes are fire-and-forget](doc/adr/0001-fire-and-forget-ingestion-pushes.md) — pushes are async by default and this is deliberate. Read this before concluding that a missing wait after a push is a defect, or proposing that the strategy retain the `runID`, poll the run, or grow `SendStrategyInterface` a wait member. Push responses carry `runID`/`eventID` and never a `taskID`, so `waitForTask` is structurally unavailable.
+
 **Namespace:** PSR-4 root `Algolia\Ingestion` (registered in `registration.php`). Module name: `Algolia_Ingestion`.
 
 Key components:

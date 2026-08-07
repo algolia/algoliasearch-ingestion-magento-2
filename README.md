@@ -18,6 +18,8 @@ The core `algolia/algoliasearch-magento-2` extension (v3.19.0+) resolves a *send
 
 If anything goes wrong and **Fallback to direct indexing** is enabled, the strategy transparently falls back to the core `DirectSendStrategy`, so indexing never silently stops. If fallback is disabled, the error is re-thrown.
 
+Pushes are **asynchronous by default**: the extension delivers records to the pipeline and does not wait for the ingestion run to finish, because observability of a run belongs to the Algolia Dashboard. The one exception is the temporary-index push that precedes a `moveIndex`, where the extension takes a subsequent action predicated on the push having landed. See [ADR 0001](doc/adr/0001-fire-and-forget-ingestion-pushes.md) for the reasoning, the constraint that rules out a `waitForTask`-style wait, and the alternatives that were rejected.
+
 ### The Task Pipeline
 
 The Ingestion API models indexing as a pipeline of resources. Following the data as it flows from Magento to a searchable index:
