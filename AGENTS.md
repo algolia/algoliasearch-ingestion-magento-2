@@ -13,7 +13,7 @@ This module sequences after `Algolia_AlgoliaSearch` and reuses its credentials (
 - **`php -l <file>`** — Syntax-check modified PHP files
 - **`composer validate`** — Verify `composer.json` correctness
 - **`magento2-lint <path>`** — PHP-CS-Fixer (requires `composer global require algolia/magento2-tools`)
-- **`magento2-analyse <path>`** — PHPStan level 1 (same global install)
+- **`magento2-analyse .`** — PHPStan level 1 (same global install). Run it from the package root, not against a subdirectory: `magento2-analyse` only picks up the overlay config at `<given-path>/phpstan.neon`, so `magento2-analyse Test/Unit` silently misses this package's `phpstan.neon` and reports the ignored PHPUnit 12 attribute errors documented there.
 - **`magento2-test <path>`** — Run all quality checks in dry-run mode
 
 ### Validating Changes Without Tests
