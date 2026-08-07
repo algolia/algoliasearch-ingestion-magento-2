@@ -1,7 +1,7 @@
 # ADR 0001: Ingestion pushes are fire-and-forget
 
 - **Status:** Accepted
-- **Date:** 2026-08-06
+- **Date:** 2026-08-07
 - **Applies to:** [`Service/IngestionSendStrategy.php`](../../Service/IngestionSendStrategy.php)
 - **Related:** [MAGE-1520](https://algolia.atlassian.net/browse/MAGE-1520) (epic), [MAGE-1542](https://algolia.atlassian.net/browse/MAGE-1542) (integration testing)
 
