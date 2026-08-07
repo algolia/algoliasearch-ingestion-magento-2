@@ -1,0 +1,13 @@
+parameters:
+    level: 1
+    paths:
+        - %currentWorkingDirectory%
+    ignoreErrors:
+        # #[AllowMockObjectsWithoutExpectations] is a PHPUnit 12 class. The package supports
+        # ^10.5|^12.0 and if the surrounding Magento install resolves PHPUnit 10.5, PHPStan cannot
+        # see the class even though the attribute is intentional and correct: PHP resolves attribute
+        # classes lazily, so PHPUnit 10 never instantiates it and the suite stays green on both
+        # versions. Remove this entry once PHPUnit 12 is the analysis runtime: the magento2-tools
+        # default of reportUnmatchedIgnoredErrors is left in place (true), so PHPStan will flag this
+        # entry as stale once it no longer matches.
+        - '#Attribute class PHPUnit\\Framework\\Attributes\\AllowMockObjectsWithoutExpectations does not exist.#'

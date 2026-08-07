@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Algolia\Ingestion\Test\Unit\Console\Command\Ingestion;
 
 use Algolia\AlgoliaSearch\Api\Data\IndexOptionsInterface;
@@ -9,9 +11,15 @@ use Algolia\Ingestion\Api\IngestionTaskServiceInterface;
 use Algolia\Ingestion\Console\Command\Ingestion\IngestionInitCommand;
 use Magento\Framework\Console\Cli;
 use Magento\Framework\Exception\NoSuchEntityException;
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use Symfony\Component\Console\Tester\CommandTester;
 
+// TODO: Opts out of the PHPUnit 12 "mock created without expectations" notice. The command under
+// test is built as a partial mock (see makePartial()) so the notice cannot be resolved by splitting
+// stub-vs-mock usage. The shared setUp() collaborators are a separate cleanup: move creation into
+// each test so a test that only feeds canned input can use createStub().
+#[AllowMockObjectsWithoutExpectations]
 class IngestionInitCommandTest extends AbstractIngestionCommandTestCase
 {
     private null|(IngestionTaskServiceInterface&MockObject) $taskService = null;

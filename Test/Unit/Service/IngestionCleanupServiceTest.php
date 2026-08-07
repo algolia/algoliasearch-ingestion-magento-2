@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Algolia\Ingestion\Test\Unit\Service;
 
 use Algolia\AlgoliaSearch\Api\IngestionClient;
@@ -18,8 +20,14 @@ use Algolia\Ingestion\Model\Cleanup\Plan\CleanupPlan;
 use Algolia\Ingestion\Model\Cleanup\Plan\ObjectPlan;
 use Algolia\Ingestion\Model\Cleanup\Plan\RowPlan;
 use Algolia\Ingestion\Model\Cleanup\Result\RowResult;
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 
+// TODO: Opts out of the PHPUnit 12 "mock created without expectations" notice. Collaborators are
+// created once in setUp() and used as canned-response feeders in some tests (bare ->method(), no
+// ->expects()) and as asserted interactions in others, so they cannot be split into stubs and mocks
+// without moving creation into each test via createObjectToTest().
+#[AllowMockObjectsWithoutExpectations]
 class IngestionCleanupServiceTest extends TestCase
 {
     private const STORE_ID = 1;
@@ -55,11 +63,20 @@ class IngestionCleanupServiceTest extends TestCase
 
         $this->logger = $this->createMock(LoggerInterface::class);
 
-        $this->service = new IngestionCleanupService(
-            $this->clientProvider,
-            $this->collectionFactory,
-            $this->taskService,
-            $this->logger
+        $this->service = $this->createObjectToTest();
+    }
+
+    protected function createObjectToTest(
+        ?IngestionClientProviderInterface $clientProvider = null,
+        ?CollectionFactory $collectionFactory = null,
+        ?IngestionTaskService $taskService = null,
+        ?LoggerInterface $logger = null,
+    ): IngestionCleanupService {
+        return new IngestionCleanupService(
+            $clientProvider ?? $this->clientProvider,
+            $collectionFactory ?? $this->collectionFactory,
+            $taskService ?? $this->taskService,
+            $logger ?? $this->logger,
         );
     }
 
@@ -697,12 +714,7 @@ class IngestionCleanupServiceTest extends TestCase
         $this->collectionFactory = $this->createMock(CollectionFactory::class);
         $this->collectionFactory->method('create')->willReturn($this->collection);
 
-        $this->service = new IngestionCleanupService(
-            $this->clientProvider,
-            $this->collectionFactory,
-            $this->taskService,
-            $this->logger
-        );
+        $this->service = $this->createObjectToTest();
     }
 
     private function stubNoSharedRefs(): void

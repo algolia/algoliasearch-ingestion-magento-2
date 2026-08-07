@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Algolia\Ingestion\Test\Unit\Service;
 
 use Algolia\AlgoliaSearch\Api\Data\IndexOptionsInterface;
@@ -18,8 +20,14 @@ use Algolia\Ingestion\Model\ResourceModel\IngestionTask as IngestionTaskResource
 use Algolia\Ingestion\Model\ResourceModel\IngestionTask\Collection;
 use Algolia\Ingestion\Model\ResourceModel\IngestionTask\CollectionFactory;
 use Algolia\Ingestion\Service\IngestionTaskService;
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 
+// TODO: Opts out of the PHPUnit 12 "mock created without expectations" notice. Collaborators are
+// created once in setUp() and used as canned-response feeders in some tests (bare ->method(), no
+// ->expects()) and as asserted interactions in others, so they cannot be split into stubs and mocks
+// without moving creation into each test via createObjectToTest().
+#[AllowMockObjectsWithoutExpectations]
 class IngestionTaskServiceTest extends TestCase
 {
     private const STORE_ID = 1;
@@ -75,15 +83,28 @@ class IngestionTaskServiceTest extends TestCase
 
         $this->logger = $this->createMock(LoggerInterface::class);
 
-        $this->service = new IngestionTaskService(
-            $this->clientProvider,
-            $this->configHelper,
-            $this->algoliaConfigHelper,
-            $this->taskFactory,
-            $this->taskResource,
-            $this->collectionFactory,
-            $this->indexNameFetcher,
-            $this->logger
+        $this->service = $this->createObjectToTest();
+    }
+
+    protected function createObjectToTest(
+        ?IngestionClientProviderInterface $clientProvider = null,
+        ?IngestionConfigHelper $configHelper = null,
+        ?ConfigHelper $algoliaConfigHelper = null,
+        ?IngestionTaskFactory $taskFactory = null,
+        ?IngestionTaskResource $taskResource = null,
+        ?CollectionFactory $collectionFactory = null,
+        ?IndexNameFetcher $indexNameFetcher = null,
+        ?LoggerInterface $logger = null,
+    ): IngestionTaskService {
+        return new IngestionTaskService(
+            $clientProvider ?? $this->clientProvider,
+            $configHelper ?? $this->configHelper,
+            $algoliaConfigHelper ?? $this->algoliaConfigHelper,
+            $taskFactory ?? $this->taskFactory,
+            $taskResource ?? $this->taskResource,
+            $collectionFactory ?? $this->collectionFactory,
+            $indexNameFetcher ?? $this->indexNameFetcher,
+            $logger ?? $this->logger,
         );
     }
 
@@ -753,16 +774,7 @@ class IngestionTaskServiceTest extends TestCase
         $collectionFactory = $this->createMock(CollectionFactory::class);
         $collectionFactory->method('create')->willReturn($collection);
 
-        $this->service = new IngestionTaskService(
-            $this->clientProvider,
-            $this->configHelper,
-            $this->algoliaConfigHelper,
-            $this->taskFactory,
-            $this->taskResource,
-            $collectionFactory,
-            $this->indexNameFetcher,
-            $this->logger
-        );
+        $this->service = $this->createObjectToTest(collectionFactory: $collectionFactory);
 
         $deleted = [];
         $this->taskResource->expects($this->exactly(2))
@@ -831,16 +843,7 @@ class IngestionTaskServiceTest extends TestCase
         $this->indexNameFetcher = $this->createMock(IndexNameFetcher::class);
         $this->indexNameFetcher->expects($this->never())->method('getOriginalIndexName');
 
-        $this->service = new IngestionTaskService(
-            $this->clientProvider,
-            $this->configHelper,
-            $this->algoliaConfigHelper,
-            $this->taskFactory,
-            $this->taskResource,
-            $this->collectionFactory,
-            $this->indexNameFetcher,
-            $this->logger
-        );
+        $this->service = $this->createObjectToTest();
 
         $this->setPrivateProperty(
             $this->service,

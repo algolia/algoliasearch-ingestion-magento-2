@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Algolia\Ingestion\Test\Unit\Observer;
 
 use Algolia\AlgoliaSearch\Test\TestCase;
@@ -9,7 +11,7 @@ use Magento\Framework\Event;
 use Magento\Framework\Event\Observer;
 use Magento\Store\Api\Data\StoreInterface;
 use Magento\Store\Model\StoreManagerInterface;
-use PHPUnit\Framework\MockObject\MockObject;
+use PHPUnit\Framework\MockObject\Stub;
 
 class TaskInvalidationObserverTest extends TestCase
 {
@@ -17,19 +19,15 @@ class TaskInvalidationObserverTest extends TestCase
     private const OTHER_WATCHED_PATH = 'algoliasearch_credentials/credentials/application_id';
     private const UNWATCHED_PATH = 'algoliasearch_credentials/credentials/debug';
 
-    private null|(IngestionTaskServiceInterface&MockObject) $taskService = null;
-    private null|(StoreManagerInterface&MockObject) $storeManager = null;
-    private ?TaskInvalidationObserver $observer = null;
-
-    protected function setUp(): void
-    {
-        $this->taskService = $this->createMock(IngestionTaskServiceInterface::class);
-        $this->storeManager = $this->createMock(StoreManagerInterface::class);
-
-        $this->observer = new TaskInvalidationObserver(
-            $this->taskService,
-            $this->storeManager,
-            [self::WATCHED_PATH, self::OTHER_WATCHED_PATH]
+    protected function createObjectToTest(
+        ?IngestionTaskServiceInterface $taskService = null,
+        ?StoreManagerInterface $storeManager = null,
+        ?array $watchedPaths = null,
+    ): TaskInvalidationObserver {
+        return new TaskInvalidationObserver(
+            $taskService ?? $this->createStub(IngestionTaskServiceInterface::class),
+            $storeManager ?? $this->createStub(StoreManagerInterface::class),
+            $watchedPaths ?? [self::WATCHED_PATH, self::OTHER_WATCHED_PATH],
         );
     }
 
@@ -43,14 +41,17 @@ class TaskInvalidationObserverTest extends TestCase
             'changed_paths' => [self::WATCHED_PATH],
         ]);
 
-        $this->taskService->expects($this->once())
+        $taskService = $this->createMock(IngestionTaskServiceInterface::class);
+        $taskService->expects($this->once())
             ->method('invalidateByStore')
             ->with(1);
 
-        $this->storeManager->expects($this->never())->method('getWebsite');
-        $this->storeManager->expects($this->never())->method('getStores');
+        $storeManager = $this->createMock(StoreManagerInterface::class);
+        $storeManager->expects($this->never())->method('getWebsite');
+        $storeManager->expects($this->never())->method('getStores');
 
-        $this->observer->execute($magentoObserver);
+        $this->createObjectToTest(taskService: $taskService, storeManager: $storeManager)
+            ->execute($magentoObserver);
     }
 
     // --- Website scope ---
@@ -63,7 +64,8 @@ class TaskInvalidationObserverTest extends TestCase
             'changed_paths' => [self::WATCHED_PATH],
         ]);
 
-        $this->storeManager->expects($this->once())
+        $storeManager = $this->createMock(StoreManagerInterface::class);
+        $storeManager->expects($this->once())
             ->method('getStores')
             ->willReturn([
                 $this->mockStore(1, 1),
@@ -72,13 +74,15 @@ class TaskInvalidationObserverTest extends TestCase
             ]);
 
         $invalidated = [];
-        $this->taskService->expects($this->exactly(2))
+        $taskService = $this->createMock(IngestionTaskServiceInterface::class);
+        $taskService->expects($this->exactly(2))
             ->method('invalidateByStore')
             ->willReturnCallback(function (int $storeId) use (&$invalidated): void {
                 $invalidated[] = $storeId;
             });
 
-        $this->observer->execute($magentoObserver);
+        $this->createObjectToTest(taskService: $taskService, storeManager: $storeManager)
+            ->execute($magentoObserver);
 
         $this->assertSame([1, 2], $invalidated);
     }
@@ -93,17 +97,20 @@ class TaskInvalidationObserverTest extends TestCase
             'changed_paths' => [self::WATCHED_PATH],
         ]);
 
-        $this->storeManager->expects($this->once())
+        $storeManager = $this->createMock(StoreManagerInterface::class);
+        $storeManager->expects($this->once())
             ->method('getStores')
             ->willReturn([
                 $this->mockStore(1, 1),
                 $this->mockStore(2, 2),
             ]);
 
-        $this->taskService->expects($this->exactly(2))
+        $taskService = $this->createMock(IngestionTaskServiceInterface::class);
+        $taskService->expects($this->exactly(2))
             ->method('invalidateByStore');
 
-        $this->observer->execute($magentoObserver);
+        $this->createObjectToTest(taskService: $taskService, storeManager: $storeManager)
+            ->execute($magentoObserver);
     }
 
     // --- changed_paths filtering ---
@@ -112,10 +119,14 @@ class TaskInvalidationObserverTest extends TestCase
     {
         $magentoObserver = $this->mockObserver(['store' => '1', 'website' => '']);
 
-        $this->taskService->expects($this->never())->method('invalidateByStore');
-        $this->storeManager->expects($this->never())->method('getStores');
+        $taskService = $this->createMock(IngestionTaskServiceInterface::class);
+        $taskService->expects($this->never())->method('invalidateByStore');
 
-        $this->observer->execute($magentoObserver);
+        $storeManager = $this->createMock(StoreManagerInterface::class);
+        $storeManager->expects($this->never())->method('getStores');
+
+        $this->createObjectToTest(taskService: $taskService, storeManager: $storeManager)
+            ->execute($magentoObserver);
     }
 
     public function testSkipsWhenNoWatchedPathChanged(): void
@@ -126,10 +137,14 @@ class TaskInvalidationObserverTest extends TestCase
             'changed_paths' => [self::UNWATCHED_PATH],
         ]);
 
-        $this->taskService->expects($this->never())->method('invalidateByStore');
-        $this->storeManager->expects($this->never())->method('getStores');
+        $taskService = $this->createMock(IngestionTaskServiceInterface::class);
+        $taskService->expects($this->never())->method('invalidateByStore');
 
-        $this->observer->execute($magentoObserver);
+        $storeManager = $this->createMock(StoreManagerInterface::class);
+        $storeManager->expects($this->never())->method('getStores');
+
+        $this->createObjectToTest(taskService: $taskService, storeManager: $storeManager)
+            ->execute($magentoObserver);
     }
 
     public function testInvalidatesWhenAnyWatchedPathPresent(): void
@@ -143,49 +158,44 @@ class TaskInvalidationObserverTest extends TestCase
             ],
         ]);
 
-        $this->taskService->expects($this->once())
+        $taskService = $this->createMock(IngestionTaskServiceInterface::class);
+        $taskService->expects($this->once())
             ->method('invalidateByStore')
             ->with(1);
 
-        $this->observer->execute($magentoObserver);
+        $this->createObjectToTest(taskService: $taskService)->execute($magentoObserver);
     }
 
     public function testEmptyWatchedPathsAlwaysSkips(): void
     {
-        $observer = new TaskInvalidationObserver(
-            $this->taskService,
-            $this->storeManager,
-            []
-        );
-
         $magentoObserver = $this->mockObserver([
             'store' => '1',
             'website' => '',
             'changed_paths' => [self::WATCHED_PATH],
         ]);
 
-        $this->taskService->expects($this->never())->method('invalidateByStore');
+        $taskService = $this->createMock(IngestionTaskServiceInterface::class);
+        $taskService->expects($this->never())->method('invalidateByStore');
 
-        $observer->execute($magentoObserver);
+        $this->createObjectToTest(taskService: $taskService, watchedPaths: [])
+            ->execute($magentoObserver);
     }
 
     // --- Helpers ---
 
-    private function mockObserver(array $eventData): Observer&MockObject
+    private function mockObserver(array $eventData): Observer&Stub
     {
         $event = new Event($eventData);
 
-        /** @var Observer&MockObject $observer */
-        $observer = $this->createMock(Observer::class);
+        $observer = $this->createStub(Observer::class);
         $observer->method('getEvent')->willReturn($event);
 
         return $observer;
     }
 
-    private function mockStore(int $id, int $websiteId): StoreInterface&MockObject
+    private function mockStore(int $id, int $websiteId): StoreInterface&Stub
     {
-        /** @var StoreInterface&MockObject $store */
-        $store = $this->createMock(StoreInterface::class);
+        $store = $this->createStub(StoreInterface::class);
         $store->method('getId')->willReturn($id);
         $store->method('getWebsiteId')->willReturn($websiteId);
         return $store;
