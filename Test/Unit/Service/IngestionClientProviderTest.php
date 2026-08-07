@@ -39,8 +39,10 @@ class IngestionClientProviderTest extends TestCase
 
     public function testGetClientWithNullStoreIdDefaultsToZero(): void
     {
-        $credentialsManager = $this->createStub(AlgoliaCredentialsManager::class);
-        $credentialsManager->method('checkCredentials')
+        $credentialsManager = $this->createMock(AlgoliaCredentialsManager::class);
+        $credentialsManager->expects($this->once())
+            ->method('checkCredentials')
+            ->with(0)
             ->willReturn(false);
 
         $this->expectException(AlgoliaException::class);
