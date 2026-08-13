@@ -25,7 +25,8 @@ class ProductIndexingTest extends IngestionIndexingTestCase
 
     public function testProductIndexing(): void
     {
-        $this->initEntityTask('_products');
+        $taskID = $this->initEntityTask('products');
+        $this->applyTransformation($taskID);
 
         $this->setConfig(ConfigHelper::SHOW_OUT_OF_STOCK, 0);
         $this->updateStockItem(self::OUT_OF_STOCK_PRODUCT_SKU, false);
@@ -35,6 +36,8 @@ class ProductIndexingTest extends IngestionIndexingTestCase
             'products',
             $this->assertValues->productsOnStockCount
         );
+
+        $this->assertTransformationIsApplied('products');
     }
 
     /**

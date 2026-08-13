@@ -9,7 +9,7 @@ class PageIndexingTest extends IngestionIndexingTestCase
 {
     public function testPageIndexing(): void
     {
-        $this->initEntityTask('_pages');
+        $this->initEntityTask('pages');
 
         $this->setConfig(
             'algoliasearch_autocomplete/autocomplete/excluded_pages',
