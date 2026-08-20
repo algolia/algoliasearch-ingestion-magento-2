@@ -2,10 +2,8 @@
 
 namespace Algolia\Ingestion\Test\Integration\Indexing\Page;
 
-use Algolia\AlgoliaSearch\Exceptions\BadRequestException;
 use Algolia\AlgoliaSearch\Service\Page\BatchQueueProcessor as PageBatchQueueProcessor;
 use Algolia\Ingestion\Test\Integration\Indexing\IngestionIndexingTestCase;
-use PHPUnit\Framework\ExpectationFailedException;
 
 class PageIndexingTest extends IngestionIndexingTestCase
 {
