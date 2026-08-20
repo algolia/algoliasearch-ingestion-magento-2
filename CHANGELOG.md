@@ -1,5 +1,10 @@
 # CHANGE LOG
 
+## 0.2.2
+
+### Internal
+- Added integration tests for ingestion of products, categories and pages.
+
 ## 0.2.1
 - Documentation-only release. No functional changes from 0.2.0. The 0.2.0 tag was cut before the 0.2.0 change log entries below were written, and published stable versions on Packagist are immutable, so the completed change log ships here instead.
 

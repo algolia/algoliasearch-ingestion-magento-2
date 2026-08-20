@@ -55,28 +55,25 @@ class IngestionIndexingTestCase extends IndexingTestCase
         parent::tearDown();
     }
 
-    protected function initEntityTask(string $entity, ?int $storeId = 1): void
+    protected function initEntityTask(string $entity, ?int $storeId = 1): string
     {
-        $indexOptions = $this->indexOptionsBuilder->buildWithComputedIndex($entity, $storeId);
-        $taskID = $this->taskService->getTaskId($indexOptions);
-        $this->applyTransformation($taskID);
+        $indexOptions = $this->getIndexOptions($entity, $storeId);
+        return $this->taskService->getTaskId($indexOptions);
     }
 
-    protected function initAllEntityTasks(?int $storeId = 1): void
-    {
-        foreach (IngestionInitCommand::ENTITY_SUFFIXES as $entity) {
-            $this->initEntityTask($entity, $storeId);
-        }
-    }
-
-    protected function applyTransformation(string $taskID): void
+    protected function applyTransformation(string $taskID, ?string $code = null): void
     {
         $client = $this->clientProvider->getClient(1);
-        $transformation = $client->createTransformation([
-            'code' => 'async function transform(record, helper) {
+
+        if ($code === null) {
+            $code = 'async function transform(record, helper) {
   record[\'name\'] += \' (transformed)\';
   return record;
-  }',
+  }';
+        }
+
+        $transformation = $client->createTransformation([
+            'code' => $code,
             'name' => "transformation for $taskID"
         ]);
 
@@ -109,6 +106,51 @@ class IngestionIndexingTestCase extends IndexingTestCase
 
     protected function assertNumberofHits($indexSuffix, $expectedNbHits)
     {
+        $resultsDefault = $this->fetchRecords($indexSuffix);
+        $nbHits = $resultsDefault['results'][0]['nbHits'];
+        $this->assertEquals($expectedNbHits, $nbHits);
+    }
+
+    protected function assertTransformationIsApplied(
+        string $indexSuffix,
+        ?string $attribute = 'name',
+        ?string $needle = '(transformed)',
+    ): void
+    {
+        $record = $this->fetchFirstRecord($indexSuffix);
+
+        if (isset($record[$attribute])) {
+            $this->assertStringContainsString($needle, $record[$attribute]);
+        }
+    }
+
+    protected function assertTransformationIsNotApplied(
+        string $indexSuffix,
+        ?string $attribute = 'name',
+        ?string $needle = '(transformed)',
+    ): void
+    {
+        $record = $this->fetchFirstRecord($indexSuffix);
+
+        if (isset($record[$attribute])) {
+            $this->assertStringNotContainsString($needle, $record[$attribute]);
+        }
+    }
+
+    protected function fetchFirstRecord(string $indexSuffix): array
+    {
+        $resultsDefault = $this->fetchRecords($indexSuffix);
+        $nbHits = $resultsDefault['results'][0]['nbHits'];
+
+        if ($nbHits > 0) {
+            return $resultsDefault['results'][0]['hits'][0];
+        }
+
+        return [];
+    }
+
+    protected function fetchRecords(string $indexSuffix): array
+    {
         $indexOptions = $this->getIndexOptions($indexSuffix);
 
         $searchQuery = $this->searchQueryFactory->create([
@@ -116,18 +158,8 @@ class IngestionIndexingTestCase extends IndexingTestCase
             'query' => '',
             'params' => [],
         ]);
-        $resultsDefault = $this->algoliaConnector->query($searchQuery);
-        $nbHits = $resultsDefault['results'][0]['nbHits'];
-        $this->assertEquals($expectedNbHits, $nbHits);
-
-        if ($nbHits > 0) {
-            $record = $resultsDefault['results'][0]['hits'][0];
-            $this->assertTransformationIsApplied($record);
-        }
+        return $this->algoliaConnector->query($searchQuery);
     }
 
-    protected function assertTransformationIsApplied(array $record): void
-    {
-        $this->assertStringContainsString('(transformed)', $record['name']);
-    }
+
 }
