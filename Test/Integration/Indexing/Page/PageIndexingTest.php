@@ -2,8 +2,10 @@
 
 namespace Algolia\Ingestion\Test\Integration\Indexing\Page;
 
+use Algolia\AlgoliaSearch\Exceptions\BadRequestException;
 use Algolia\AlgoliaSearch\Service\Page\BatchQueueProcessor as PageBatchQueueProcessor;
 use Algolia\Ingestion\Test\Integration\Indexing\IngestionIndexingTestCase;
+use PHPUnit\Framework\ExpectationFailedException;
 
 class PageIndexingTest extends IngestionIndexingTestCase
 {
@@ -53,5 +55,21 @@ class PageIndexingTest extends IngestionIndexingTestCase
         $this->processTest($pageBatchQueueProcessor, 'pages', $this->assertValues->expectedPages);
 
         $this->assertTransformationIsNotApplied('pages');
+    }
+
+    public function testMalformedTransformationWithoutFallbackMode(): void
+    {
+        $taskID = $this->initEntityTask('pages');
+        $this->applyTransformation($taskID, 'malformed');
+
+        // Disabling the fallback mode
+        $this->setConfig('algoliasearch_indexing_manager/ingestion/fallback_to_batch', 0);
+
+        $pageBatchQueueProcessor = $this->objectManager->get(PageBatchQueueProcessor::class);
+        // Since there is no fallback mode, the expected number of pages is 0
+        $this->processTest($pageBatchQueueProcessor, 'pages', 0);
+
+
+        $this->setConfig('algoliasearch_indexing_manager/ingestion/fallback_to_batch', 1);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace Algolia\Ingestion\Test\Integration\Indexing\Product;
 
+use Algolia\AlgoliaSearch\Exceptions\BadRequestException;
 use Algolia\AlgoliaSearch\Helper\ConfigHelper;
 use Algolia\AlgoliaSearch\Service\Product\BatchQueueProcessor as ProductBatchQueueProcessor;
 use Algolia\Ingestion\Test\Integration\Indexing\IngestionIndexingTestCase;
@@ -73,6 +74,31 @@ class ProductIndexingTest extends IngestionIndexingTestCase
         );
 
         $this->assertTransformationIsNotApplied('products');
+    }
+
+    public function testMalformedTransformationWithoutFallbackMode(): void
+    {
+        $taskID = $this->initEntityTask('products');
+        $this->applyTransformation($taskID, 'malformed');
+
+        // Disabling the fallback mode
+        $this->setConfig('algoliasearch_indexing_manager/ingestion/fallback_to_batch', 0);
+
+        $productBatchQueueProcessor = $this->objectManager->get(ProductBatchQueueProcessor::class);
+
+        try {
+            $this->processTest(
+                $productBatchQueueProcessor,
+                'products',
+                $this->assertValues->productsOnStockCount
+            );
+        } catch (BadRequestException $e) {
+            // Assserting the Algolia API returns the expected error
+            $this->assertEquals(400, $e->getCode());
+            $this->assertStringContainsString("malformed is not defined", $e->getMessage());
+        }
+
+        $this->setConfig('algoliasearch_indexing_manager/ingestion/fallback_to_batch', 1);
     }
 
     /**
