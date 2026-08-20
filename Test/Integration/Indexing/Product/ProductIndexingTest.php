@@ -13,14 +13,15 @@ class ProductIndexingTest extends IngestionIndexingTestCase
     public const OUT_OF_STOCK_PRODUCT_SKU = '24-MB01';
 
     protected ?StockRegistry $stockRegistry = null;
-    protected ?ProductBatchQueueProcessor $productBatchQueueProcessor = null;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->productBatchQueueProcessor = $this->objectManager->get(ProductBatchQueueProcessor::class);
         $this->stockRegistry = $this->objectManager->get(StockRegistry::class);
+
+        $this->setConfig(ConfigHelper::SHOW_OUT_OF_STOCK, 0);
+        $this->updateStockItem(self::OUT_OF_STOCK_PRODUCT_SKU, false);
     }
 
     public function testProductIndexing(): void
@@ -28,16 +29,50 @@ class ProductIndexingTest extends IngestionIndexingTestCase
         $taskID = $this->initEntityTask('products');
         $this->applyTransformation($taskID);
 
-        $this->setConfig(ConfigHelper::SHOW_OUT_OF_STOCK, 0);
-        $this->updateStockItem(self::OUT_OF_STOCK_PRODUCT_SKU, false);
-
+        $productBatchQueueProcessor = $this->objectManager->get(ProductBatchQueueProcessor::class);
         $this->processTest(
-            $this->productBatchQueueProcessor,
+            $productBatchQueueProcessor,
             'products',
             $this->assertValues->productsOnStockCount
         );
 
         $this->assertTransformationIsApplied('products');
+    }
+
+    public function testWithCustomTransformation(): void
+    {
+        $taskID = $this->initEntityTask('products');
+
+        $transformation = 'async function transform(record, helper) {
+  record[\'sku\'] +=  \' (custom)\';
+  return record;
+  }';
+
+        $this->applyTransformation($taskID, $transformation);
+
+        $productBatchQueueProcessor = $this->objectManager->get(ProductBatchQueueProcessor::class);
+        $this->processTest(
+            $productBatchQueueProcessor,
+            'products',
+            $this->assertValues->productsOnStockCount
+        );
+
+        $this->assertTransformationIsApplied('products', 'sku', '(custom)');
+    }
+
+    public function testMalformedTransformation(): void
+    {
+        $taskID = $this->initEntityTask('products');
+        $this->applyTransformation($taskID, 'malformed');
+
+        $productBatchQueueProcessor = $this->objectManager->get(ProductBatchQueueProcessor::class);
+        $this->processTest(
+            $productBatchQueueProcessor,
+            'products',
+            $this->assertValues->productsOnStockCount
+        );
+
+        $this->assertTransformationIsNotApplied('products');
     }
 
     /**

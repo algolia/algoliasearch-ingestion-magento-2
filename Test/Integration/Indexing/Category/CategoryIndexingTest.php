@@ -54,5 +54,7 @@ class CategoryIndexingTest extends IngestionIndexingTestCase
             'categories',
             $this->assertValues->expectedCategory
         );
+
+        $this->assertTransformationIsNotApplied('categories');
     }
 }

@@ -61,13 +61,6 @@ class IngestionIndexingTestCase extends IndexingTestCase
         return $this->taskService->getTaskId($indexOptions);
     }
 
-    protected function initAllEntityTasks(?int $storeId = 1): void
-    {
-        foreach (IngestionInitCommand::ENTITY_SUFFIXES as $entity) {
-            $this->initEntityTask($entity, $storeId);
-        }
-    }
-
     protected function applyTransformation(string $taskID, ?string $code = null): void
     {
         $client = $this->clientProvider->getClient(1);
@@ -124,13 +117,36 @@ class IngestionIndexingTestCase extends IndexingTestCase
         ?string $needle = '(transformed)',
     ): void
     {
+        $record = $this->fetchFirstRecord($indexSuffix);
+
+        if (isset($record[$attribute])) {
+            $this->assertStringContainsString($needle, $record[$attribute]);
+        }
+    }
+
+    protected function assertTransformationIsNotApplied(
+        string $indexSuffix,
+        ?string $attribute = 'name',
+        ?string $needle = '(transformed)',
+    ): void
+    {
+        $record = $this->fetchFirstRecord($indexSuffix);
+
+        if (isset($record[$attribute])) {
+            $this->assertStringNotContainsString($needle, $record[$attribute]);
+        }
+    }
+
+    protected function fetchFirstRecord(string $indexSuffix): array
+    {
         $resultsDefault = $this->fetchRecords($indexSuffix);
         $nbHits = $resultsDefault['results'][0]['nbHits'];
 
         if ($nbHits > 0) {
-            $record = $resultsDefault['results'][0]['hits'][0];
-            $this->assertStringContainsString($needle, $record[$attribute]);
+            return $resultsDefault['results'][0]['hits'][0];
         }
+
+        return [];
     }
 
     protected function fetchRecords(string $indexSuffix): array
